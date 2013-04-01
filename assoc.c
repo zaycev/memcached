@@ -38,7 +38,7 @@ unsigned int hashpower = HASHPOWER_DEFAULT;
 #define hashmask(n) (hashsize(n)-1)
 
 /* Main hash table. This is where we look except during expansion. */
-static item** primary_hashtable = 0;
+static item*** primary_hashtable = 0;
 
 /*
  * Previous hash table. During expansion, we look here for keys that haven't
@@ -59,14 +59,18 @@ static bool started_expanding = false;
  */
 static unsigned int expand_bucket = 0;
 
-void assoc_init(const int hashtable_init) {
+void assoc_init(const int hashtable_init,const int num_instances) {
+    int i=0;
     if (hashtable_init) {
         hashpower = hashtable_init;
     }
-    primary_hashtable = calloc(hashsize(hashpower), sizeof(void *));
-    if (! primary_hashtable) {
-        fprintf(stderr, "Failed to init hashtable.\n");
-        exit(EXIT_FAILURE);
+    primary_hashtable = calloc(num_instances, sizeof(void **));
+    for(i=0;i<num_instances;i++){
+        primary_hashtable[i] = calloc(hashsize(hashpower), sizeof(void *));
+        if (! primary_hashtable[i]) {
+            fprintf(stderr, "Failed to init hashtable.\n");
+            exit(EXIT_FAILURE);
+        }
     }
     STATS_LOCK();
     stats.hash_power_level = hashpower;
@@ -83,7 +87,7 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
     {
         it = old_hashtable[oldbucket];
     } else {
-        it = primary_hashtable[hv & hashmask(hashpower)];
+        it = primary_hashtable[0][hv & hashmask(hashpower)];
     }
 
     item *ret = NULL;
@@ -112,7 +116,7 @@ static item** _hashitem_before (const char *key, const size_t nkey, const uint32
     {
         pos = &old_hashtable[oldbucket];
     } else {
-        pos = &primary_hashtable[hv & hashmask(hashpower)];
+        pos = &primary_hashtable[0][hv & hashmask(hashpower)];
     }
 
     while (*pos && ((nkey != (*pos)->nkey) || memcmp(key, ITEM_key(*pos), nkey))) {
@@ -123,10 +127,10 @@ static item** _hashitem_before (const char *key, const size_t nkey, const uint32
 
 /* grows the hashtable to the next power of 2. */
 static void assoc_expand(void) {
-    old_hashtable = primary_hashtable;
+    old_hashtable = primary_hashtable[0];
 
-    primary_hashtable = calloc(hashsize(hashpower + 1), sizeof(void *));
-    if (primary_hashtable) {
+    primary_hashtable[0] = calloc(hashsize(hashpower + 1), sizeof(void *));
+    if (primary_hashtable[0]) {
         if (settings.verbose > 1)
             fprintf(stderr, "Hash table expansion starting\n");
         hashpower++;
@@ -138,7 +142,7 @@ static void assoc_expand(void) {
         stats.hash_is_expanding = 1;
         STATS_UNLOCK();
     } else {
-        primary_hashtable = old_hashtable;
+        primary_hashtable[0] = old_hashtable;
         /* Bad news, but we can keep running. */
     }
 }
@@ -162,8 +166,8 @@ int assoc_insert(item *it, const uint32_t hv) {
         it->h_next = old_hashtable[oldbucket];
         old_hashtable[oldbucket] = it;
     } else {
-        it->h_next = primary_hashtable[hv & hashmask(hashpower)];
-        primary_hashtable[hv & hashmask(hashpower)] = it;
+        it->h_next = primary_hashtable[0][hv & hashmask(hashpower)];
+        primary_hashtable[0][hv & hashmask(hashpower)] = it;
     }
 
     hash_items++;
@@ -209,7 +213,7 @@ static void *assoc_maintenance_thread(void *arg) {
         /* Lock the cache, and bulk move multiple buckets to the new
          * hash table. */
         item_lock_global();
-		mutex_lock(&cache_lock);
+        mutex_lock(&cache_lock);
 
         for (ii = 0; ii < hash_bulk_move && expanding; ++ii) {
             item *it, *next;
@@ -219,8 +223,8 @@ static void *assoc_maintenance_thread(void *arg) {
                 next = it->h_next;
 
                 bucket = hash(ITEM_key(it), it->nkey, 0) & hashmask(hashpower);
-                it->h_next = primary_hashtable[bucket];
-                primary_hashtable[bucket] = it;
+                it->h_next = primary_hashtable[0][bucket];
+                primary_hashtable[0][bucket] = it;
             }
 
             old_hashtable[expand_bucket] = NULL;
