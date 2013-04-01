@@ -214,6 +214,7 @@ static void settings_init(void) {
     settings.factor = 1.25;
     settings.chunk_size = 48;         /* space for a modest key and value */
     settings.num_threads = 4;         /* N workers */
+    settings.num_instances = 100;         /* N memory managers */
     settings.num_threads_per_udp = 0;
     settings.prefix_delimiter = ':';
     settings.detail_enabled = 0;
@@ -4482,7 +4483,8 @@ static void usage(void) {
            "-i            print memcached and libevent license\n"
            "-P <file>     save PID in <file>, only used with -d option\n"
            "-f <factor>   chunk size growth factor (default: 1.25)\n"
-           "-n <bytes>    minimum space allocated for key+value+flags (default: 48)\n");
+           "-n <bytes>    minimum space allocated for key+value+flags (default: 48)\n"
+           "-N            Number of partitions (default: 4)\n");
     printf("-L            Try to use large memory pages (if available). Increasing\n"
            "              the memory page size could reduce the number of TLB misses\n"
            "              and improve the performance. In order to get large pages\n"
@@ -4494,6 +4496,7 @@ static void usage(void) {
            "              is turned on automatically; if not, then it may be turned on\n"
            "              by sending the \"stats detail on\" command to the server.\n");
     printf("-t <num>      number of threads to use (default: 4)\n");
+    printf("-T            number of instances of memory manager (default: 100)\n");
     printf("-R            Maximum number of requests per event, limits the number of\n"
            "              requests process for a given connection to prevent \n"
            "              starvation (default: 20)\n");
@@ -4895,6 +4898,13 @@ int main (int argc, char **argv) {
                                 " your machine or less.\n");
             }
             break;
+        case 'T':
+            settings.num_instances = atoi(optarg);
+            if (settings.num_instances <= 0) {
+                fprintf(stderr, "Number of instances must be greater than 0\n");
+                return 1;
+            }
+            break;
         case 'D':
             if (! optarg || ! optarg[0]) {
                 fprintf(stderr, "No delimiter specified\n");
@@ -5143,9 +5153,9 @@ int main (int argc, char **argv) {
 
     /* initialize other stuff */
     stats_init();
-    assoc_init(settings.hashpower_init);
+    assoc_init(settings.hashpower_init,settings.num_instances);
     conn_init();
-    slabs_init(settings.maxbytes, settings.factor, preallocate);
+    slabs_init(settings.maxbytes, settings.factor, preallocate, settings.num_instances);
 
     /*
      * ignore SIGPIPE signals; we can use errno == EPIPE if we

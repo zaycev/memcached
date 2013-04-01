@@ -39,7 +39,7 @@ typedef struct {
     size_t requested; /* The number of requested bytes */
 } slabclass_t;
 
-static slabclass_t slabclass[MAX_NUMBER_OF_SLAB_CLASSES];
+static slabclass_t **slabclass;
 static size_t mem_limit = 0;
 static size_t mem_malloced = 0;
 static int power_largest;
@@ -82,7 +82,7 @@ unsigned int slabs_clsid(const size_t size) {
 
     if (size == 0)
         return 0;
-    while (size > slabclass[res].size)
+    while (size > slabclass[0][res].size)
         if (res++ == power_largest)     /* won't fit in the biggest slab */
             return 0;
     return res;
@@ -92,8 +92,9 @@ unsigned int slabs_clsid(const size_t size) {
  * Determines the chunk sizes and initializes the slab class descriptors
  * accordingly.
  */
-void slabs_init(const size_t limit, const double factor, const bool prealloc) {
+void slabs_init(const size_t limit, const double factor, const bool prealloc, const int num_instances) {
     int i = POWER_SMALLEST - 1;
+    int j=0;
     unsigned int size = sizeof(item) + settings.chunk_size;
 
     mem_limit = limit;
@@ -109,29 +110,33 @@ void slabs_init(const size_t limit, const double factor, const bool prealloc) {
                     " one large chunk.\nWill allocate in smaller chunks\n");
         }
     }
+    slabclass = calloc(num_instances,sizeof(slabclass_t*));
+    for(j=0;j<num_instances;j++){
+        slabclass[j] = calloc(MAX_NUMBER_OF_SLAB_CLASSES,sizeof(slabclass_t));
+    }
 
-    memset(slabclass, 0, sizeof(slabclass));
+    memset(slabclass[0], 0, sizeof(slabclass[0]));
 
     while (++i < POWER_LARGEST && size <= settings.item_size_max / factor) {
         /* Make sure items are always n-byte aligned */
         if (size % CHUNK_ALIGN_BYTES)
             size += CHUNK_ALIGN_BYTES - (size % CHUNK_ALIGN_BYTES);
 
-        slabclass[i].size = size;
-        slabclass[i].perslab = settings.item_size_max / slabclass[i].size;
+        slabclass[0][i].size = size;
+        slabclass[0][i].perslab = settings.item_size_max / slabclass[0][i].size;
         size *= factor;
         if (settings.verbose > 1) {
             fprintf(stderr, "slab class %3d: chunk size %9u perslab %7u\n",
-                    i, slabclass[i].size, slabclass[i].perslab);
+                    i, slabclass[0][i].size, slabclass[0][i].perslab);
         }
     }
 
     power_largest = i;
-    slabclass[power_largest].size = settings.item_size_max;
-    slabclass[power_largest].perslab = 1;
+    slabclass[0][power_largest].size = settings.item_size_max;
+    slabclass[0][power_largest].perslab = 1;
     if (settings.verbose > 1) {
         fprintf(stderr, "slab class %3d: chunk size %9u perslab %7u\n",
-                i, slabclass[i].size, slabclass[i].perslab);
+                i, slabclass[0][i].size, slabclass[0][i].perslab);
     }
 
     /* for the test suite:  faking of how much we've already malloc'd */
@@ -172,7 +177,7 @@ static void slabs_preallocate (const unsigned int maxslabs) {
 }
 
 static int grow_slab_list (const unsigned int id) {
-    slabclass_t *p = &slabclass[id];
+    slabclass_t *p = &slabclass[0][id];
     if (p->slabs == p->list_size) {
         size_t new_size =  (p->list_size != 0) ? p->list_size * 2 : 16;
         void *new_list = realloc(p->slab_list, new_size * sizeof(void *));
@@ -184,7 +189,7 @@ static int grow_slab_list (const unsigned int id) {
 }
 
 static void split_slab_page_into_freelist(char *ptr, const unsigned int id) {
-    slabclass_t *p = &slabclass[id];
+    slabclass_t *p = &slabclass[0][id];
     int x;
     for (x = 0; x < p->perslab; x++) {
         do_slabs_free(ptr, 0, id);
@@ -193,7 +198,7 @@ static void split_slab_page_into_freelist(char *ptr, const unsigned int id) {
 }
 
 static int do_slabs_newslab(const unsigned int id) {
-    slabclass_t *p = &slabclass[id];
+    slabclass_t *p = &slabclass[0][id];
     int len = settings.slab_reassign ? settings.item_size_max
         : p->size * p->perslab;
     char *ptr;
@@ -227,7 +232,7 @@ static void *do_slabs_alloc(const size_t size, unsigned int id) {
         return NULL;
     }
 
-    p = &slabclass[id];
+    p = &slabclass[0][id];
     assert(p->sl_curr == 0 || ((item *)p->slots)->slabs_clsid == 0);
 
     /* fail unless we have space at the end of a recently allocated page,
@@ -264,7 +269,7 @@ static void do_slabs_free(void *ptr, const size_t size, unsigned int id) {
         return;
 
     MEMCACHED_SLABS_FREE(size, id, ptr);
-    p = &slabclass[id];
+    p = &slabclass[0][id];
 
     it = (item *)ptr;
     it->it_flags |= ITEM_SLABBED;
@@ -320,7 +325,7 @@ static void do_slabs_stats(ADD_STAT add_stats, void *c) {
 
     total = 0;
     for(i = POWER_SMALLEST; i <= power_largest; i++) {
-        slabclass_t *p = &slabclass[i];
+        slabclass_t *p = &slabclass[0][i];
         if (p->slabs != 0) {
             uint32_t perslab, slabs;
             slabs = p->slabs;
@@ -427,7 +432,7 @@ void slabs_adjust_mem_requested(unsigned int id, size_t old, size_t ntotal)
         abort();
     }
 
-    p = &slabclass[id];
+    p = &slabclass[0][id];
     p->requested = p->requested - old + ntotal;
     pthread_mutex_unlock(&slabs_lock);
 }
@@ -454,7 +459,7 @@ static int slab_rebalance_start(void) {
         slab_rebal.s_clsid == slab_rebal.d_clsid)
         no_go = -2;
 
-    s_cls = &slabclass[slab_rebal.s_clsid];
+    s_cls = &slabclass[0][slab_rebal.s_clsid];
 
     if (!grow_slab_list(slab_rebal.d_clsid)) {
         no_go = -1;
@@ -513,7 +518,7 @@ static int slab_rebalance_move(void) {
     pthread_mutex_lock(&cache_lock);
     pthread_mutex_lock(&slabs_lock);
 
-    s_cls = &slabclass[slab_rebal.s_clsid];
+    s_cls = &slabclass[0][slab_rebal.s_clsid];
 
     for (x = 0; x < slab_bulk_check; x++) {
         item *it = slab_rebal.slab_pos;
@@ -603,8 +608,8 @@ static void slab_rebalance_finish(void) {
     pthread_mutex_lock(&cache_lock);
     pthread_mutex_lock(&slabs_lock);
 
-    s_cls = &slabclass[slab_rebal.s_clsid];
-    d_cls   = &slabclass[slab_rebal.d_clsid];
+    s_cls = &slabclass[0][slab_rebal.s_clsid];
+    d_cls   = &slabclass[0][slab_rebal.d_clsid];
 
     /* At this point the stolen slab is completely clear */
     s_cls->slab_list[s_cls->killing - 1] =
@@ -669,7 +674,7 @@ static int slab_automove_decision(int *src, int *dst) {
     item_stats_evictions(evicted_new);
     pthread_mutex_lock(&cache_lock);
     for (i = POWER_SMALLEST; i < power_largest; i++) {
-        total_pages[i] = slabclass[i].slabs;
+        total_pages[i] = slabclass[0][i].slabs;
     }
     pthread_mutex_unlock(&cache_lock);
 
@@ -780,7 +785,7 @@ static int slabs_reassign_pick_any(int dst) {
             cur = POWER_SMALLEST;
         if (cur == dst)
             continue;
-        if (slabclass[cur].slabs > 1) {
+        if (slabclass[0][cur].slabs > 1) {
             return cur;
         }
     }
@@ -804,7 +809,7 @@ static enum reassign_result_type do_slabs_reassign(int src, int dst) {
         dst < POWER_SMALLEST || dst > power_largest)
         return REASSIGN_BADCLASS;
 
-    if (slabclass[src].slabs < 2)
+    if (slabclass[0][src].slabs < 2)
         return REASSIGN_NOSPARE;
 
     slab_rebal.s_clsid = src;
