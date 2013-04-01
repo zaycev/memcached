@@ -5155,7 +5155,7 @@ int main (int argc, char **argv) {
     stats_init();
     assoc_init(settings.hashpower_init,settings.num_instances);
     conn_init();
-    slabs_init(settings.maxbytes, settings.factor, preallocate);
+    slabs_init(settings.maxbytes, settings.factor, preallocate, settings.num_instances);
 
     /*
      * ignore SIGPIPE signals; we can use errno == EPIPE if we
