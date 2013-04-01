@@ -60,6 +60,7 @@ static uint32_t item_lock_count;
 #define hashsize(n) ((unsigned long int)1<<(n))
 #define hashmask(n) (hashsize(n)-1)
 /* this lock is temporarily engaged during a hash table expansion */
+static pthread_mutex_t errchkmutex;
 static pthread_mutex_t item_global_lock;
 /* thread-specific variable for deeply finding the item lock type */
 static pthread_key_t item_lock_type_key;
@@ -806,6 +807,8 @@ void thread_init(int nthreads, struct event_base *main_base) {
     }
     pthread_key_create(&item_lock_type_key, NULL);
     pthread_mutex_init(&item_global_lock, NULL);
+    pthread_mutexattr_settype(&item_global_lock, PTHREAD_MUTEX_ERRORCHECK);
+	pthread_mutex_init(&errchkmutex, &item_global_lock);
 
     threads = calloc(nthreads, sizeof(LIBEVENT_THREAD));
     if (! threads) {
