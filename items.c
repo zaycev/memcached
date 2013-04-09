@@ -396,9 +396,9 @@ char *do_item_cachedump(const unsigned int slabs_clsid, const unsigned int limit
     buffer = malloc((size_t)memlimit);
     if (buffer == 0) return NULL;
     bufcurr = 0;
+
     for(i=0; i < settings.num_instances; i++){
         it = heads[i][slabs_clsid];
-
         while (it != NULL && (limit == 0 || shown < limit)) {
             assert(it->nkey <= KEY_MAX_LENGTH);
             /* Copy the key since it may not be null-terminated in the struct */
@@ -457,35 +457,37 @@ void do_item_stats_totals(ADD_STAT add_stats, void *c) {
 }
 
 void do_item_stats(ADD_STAT add_stats, void *c) {
-    int i;
-    for (i = 0; i < LARGEST_ID; i++) {
-        if (tails[0][i] != NULL) {
-            const char *fmt = "items:%d:%s";
-            char key_str[STAT_KEY_LEN];
-            char val_str[STAT_VAL_LEN];
-            int klen = 0, vlen = 0;
-            if (tails[0][i] == NULL) {
-                /* We removed all of the items in this slab class */
-                continue;
+    int i,instance_id;
+    for (instance_id = 0; instance_id < settings.num_instances; instance_id++) {
+        for (i = 0; i < LARGEST_ID; i++) {
+            if (tails[instance_id][i] != NULL) {
+                const char *fmt = "items:%d:%s";
+                char key_str[STAT_KEY_LEN];
+                char val_str[STAT_VAL_LEN];
+                int klen = 0, vlen = 0;
+                if (tails[instance_id][i] == NULL) {
+                    /* We removed all of the items in this slab class */
+                    continue;
+                }
+                APPEND_NUM_FMT_STAT(fmt, i, "number", "%u", sizes[instance_id][i]);
+                APPEND_NUM_FMT_STAT(fmt, i, "age", "%u", current_time - tails[instance_id][i]->time);
+                APPEND_NUM_FMT_STAT(fmt, i, "evicted",
+                                    "%llu", (unsigned long long)itemstats[instance_id][i].evicted);
+                APPEND_NUM_FMT_STAT(fmt, i, "evicted_nonzero",
+                                    "%llu", (unsigned long long)itemstats[instance_id][i].evicted_nonzero);
+                APPEND_NUM_FMT_STAT(fmt, i, "evicted_time",
+                                    "%u", itemstats[instance_id][i].evicted_time);
+                APPEND_NUM_FMT_STAT(fmt, i, "outofmemory",
+                                    "%llu", (unsigned long long)itemstats[instance_id][i].outofmemory);
+                APPEND_NUM_FMT_STAT(fmt, i, "tailrepairs",
+                                    "%llu", (unsigned long long)itemstats[instance_id][i].tailrepairs);
+                APPEND_NUM_FMT_STAT(fmt, i, "reclaimed",
+                                    "%llu", (unsigned long long)itemstats[instance_id][i].reclaimed);
+                APPEND_NUM_FMT_STAT(fmt, i, "expired_unfetched",
+                                    "%llu", (unsigned long long)itemstats[instance_id][i].expired_unfetched);
+                APPEND_NUM_FMT_STAT(fmt, i, "evicted_unfetched",
+                                    "%llu", (unsigned long long)itemstats[instance_id][i].evicted_unfetched);
             }
-            APPEND_NUM_FMT_STAT(fmt, i, "number", "%u", sizes[0][i]);
-            APPEND_NUM_FMT_STAT(fmt, i, "age", "%u", current_time - tails[0][i]->time);
-            APPEND_NUM_FMT_STAT(fmt, i, "evicted",
-                                "%llu", (unsigned long long)itemstats[0][i].evicted);
-            APPEND_NUM_FMT_STAT(fmt, i, "evicted_nonzero",
-                                "%llu", (unsigned long long)itemstats[0][i].evicted_nonzero);
-            APPEND_NUM_FMT_STAT(fmt, i, "evicted_time",
-                                "%u", itemstats[0][i].evicted_time);
-            APPEND_NUM_FMT_STAT(fmt, i, "outofmemory",
-                                "%llu", (unsigned long long)itemstats[0][i].outofmemory);
-            APPEND_NUM_FMT_STAT(fmt, i, "tailrepairs",
-                                "%llu", (unsigned long long)itemstats[0][i].tailrepairs);
-            APPEND_NUM_FMT_STAT(fmt, i, "reclaimed",
-                                "%llu", (unsigned long long)itemstats[0][i].reclaimed);
-            APPEND_NUM_FMT_STAT(fmt, i, "expired_unfetched",
-                                "%llu", (unsigned long long)itemstats[0][i].expired_unfetched);
-            APPEND_NUM_FMT_STAT(fmt, i, "evicted_unfetched",
-                                "%llu", (unsigned long long)itemstats[0][i].evicted_unfetched);
         }
     }
 
@@ -502,20 +504,20 @@ void do_item_stats_sizes(ADD_STAT add_stats, void *c) {
     unsigned int *histogram = calloc(num_buckets, sizeof(int));
 
     if (histogram != NULL) {
-        int i;
-
-        /* build the histogram */
-        for (i = 0; i < LARGEST_ID; i++) {
-            item *iter = heads[0][i];
-            while (iter) {
-                int ntotal = ITEM_ntotal(iter);
-                int bucket = ntotal / 32;
-                if ((ntotal % 32) != 0) bucket++;
-                if (bucket < num_buckets) histogram[bucket]++;
-                iter = iter->next;
+        int i, instance_id;
+        for (instance_id = 0; instance_id < settings.num_instances; instance_id++) {
+            /* build the histogram */
+            for (i = 0; i < LARGEST_ID; i++) {
+                item *iter = heads[instance_id][i];
+                while (iter) {
+                    int ntotal = ITEM_ntotal(iter);
+                    int bucket = ntotal / 32;
+                    if ((ntotal % 32) != 0) bucket++;
+                    if (bucket < num_buckets) histogram[bucket]++;
+                    iter = iter->next;
+                }
             }
         }
-
         /* write the buffer */
         for (i = 0; i < num_buckets; i++) {
             if (histogram[i] != 0) {
@@ -596,25 +598,27 @@ item *do_item_touch(const char *key, size_t nkey, uint32_t exptime,
 
 /* expires items that are more recent than the oldest_live setting. */
 void do_item_flush_expired(void) {
-    int i;
+    int i, instance_id;
     item *iter, *next;
     if (settings.oldest_live == 0)
         return;
-    for (i = 0; i < LARGEST_ID; i++) {
-        /* The LRU is sorted in decreasing time order, and an item's timestamp
-         * is never newer than its last access time, so we only need to walk
-         * back until we hit an item older than the oldest_live time.
-         * The oldest_live checking will auto-expire the remaining items.
-         */
-        for (iter = heads[0][i]; iter != NULL; iter = next) {
-            if (iter->time >= settings.oldest_live) {
-                next = iter->next;
-                if ((iter->it_flags & ITEM_SLABBED) == 0) {
-                    do_item_unlink_nolock(iter, hash(ITEM_key(iter), iter->nkey, 0));
+    for (instance_id = 0; instance_id < settings.num_instances; instance_id++) {
+        for (i = 0; i < LARGEST_ID; i++) {
+            /* The LRU is sorted in decreasing time order, and an item's timestamp
+             * is never newer than its last access time, so we only need to walk
+             * back until we hit an item older than the oldest_live time.
+             * The oldest_live checking will auto-expire the remaining items.
+             */
+            for (iter = heads[instance_id][i]; iter != NULL; iter = next) {
+                if (iter->time >= settings.oldest_live) {
+                    next = iter->next;
+                    if ((iter->it_flags & ITEM_SLABBED) == 0) {
+                        do_item_unlink_nolock(iter, hash(ITEM_key(iter), iter->nkey, 0));
+                    }
+                } else {
+                    /* We've hit the first old item. Continue to the next queue. */
+                    break;
                 }
-            } else {
-                /* We've hit the first old item. Continue to the next queue. */
-                break;
             }
         }
     }
