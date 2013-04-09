@@ -328,7 +328,7 @@ void do_item_unlink(item *it, const uint32_t hv, const int instance_id) {
         stats.curr_bytes -= ITEM_ntotal(it);
         stats.curr_items -= 1;
         STATS_UNLOCK();
-        assoc_delete(ITEM_key(it), it->nkey, hv);
+        assoc_delete(ITEM_key(it), it->nkey, hv, instance_id);
         item_unlink_q(it, instance_id);
         do_item_remove(it);
     }
@@ -344,7 +344,7 @@ void do_item_unlink_nolock(item *it, const uint32_t hv, const int instance_id) {
         stats.curr_bytes -= ITEM_ntotal(it);
         stats.curr_items -= 1;
         STATS_UNLOCK();
-        assoc_delete(ITEM_key(it), it->nkey, hv);
+        assoc_delete(ITEM_key(it), it->nkey, hv, instance_id);
         item_unlink_q(it, instance_id);
         do_item_remove(it);
     }

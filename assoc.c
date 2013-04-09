@@ -179,8 +179,7 @@ int assoc_insert(item *it, const uint32_t hv, const int instance_id) {
     return 1;
 }
 
-void assoc_delete(const char *key, const size_t nkey, const uint32_t hv) {
-    int instance_id=0;
+void assoc_delete(const char *key, const size_t nkey, const uint32_t hv, const int instance_id) {
     item **before = _hashitem_before(key, nkey, hv, instance_id);
 
     if (*before) {
