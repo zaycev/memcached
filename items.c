@@ -390,27 +390,30 @@ char *do_item_cachedump(const unsigned int slabs_clsid, const unsigned int limit
     unsigned int shown = 0;
     char key_temp[KEY_MAX_LENGTH + 1];
     char temp[512];
+    int i=0;
 
-    it = heads[0][slabs_clsid];
 
     buffer = malloc((size_t)memlimit);
     if (buffer == 0) return NULL;
     bufcurr = 0;
+    for(i=0; i < settings.num_instances; i++){
+        it = heads[i][slabs_clsid];
 
-    while (it != NULL && (limit == 0 || shown < limit)) {
-        assert(it->nkey <= KEY_MAX_LENGTH);
-        /* Copy the key since it may not be null-terminated in the struct */
-        strncpy(key_temp, ITEM_key(it), it->nkey);
-        key_temp[it->nkey] = 0x00; /* terminate */
-        len = snprintf(temp, sizeof(temp), "ITEM %s [%d b; %lu s]\r\n",
-                       key_temp, it->nbytes - 2,
-                       (unsigned long)it->exptime + process_started);
-        if (bufcurr + len + 6 > memlimit)  /* 6 is END\r\n\0 */
-            break;
-        memcpy(buffer + bufcurr, temp, len);
-        bufcurr += len;
-        shown++;
-        it = it->next;
+        while (it != NULL && (limit == 0 || shown < limit)) {
+            assert(it->nkey <= KEY_MAX_LENGTH);
+            /* Copy the key since it may not be null-terminated in the struct */
+            strncpy(key_temp, ITEM_key(it), it->nkey);
+            key_temp[it->nkey] = 0x00; /* terminate */
+            len = snprintf(temp, sizeof(temp), "ITEM %s [%d b; %lu s]\r\n",
+                           key_temp, it->nbytes - 2,
+                           (unsigned long)it->exptime + process_started);
+            if (bufcurr + len + 6 > memlimit)  /* 6 is END\r\n\0 */
+                break;
+            memcpy(buffer + bufcurr, temp, len);
+            bufcurr += len;
+            shown++;
+            it = it->next;
+        }
     }
 
     memcpy(buffer + bufcurr, "END\r\n", 6);
@@ -421,10 +424,12 @@ char *do_item_cachedump(const unsigned int slabs_clsid, const unsigned int limit
 }
 
 void item_stats_evictions(uint64_t *evicted) {
-    int i;
+    int i,instance_id;
     mutex_lock(&cache_lock);
-    for (i = 0; i < LARGEST_ID; i++) {
-        evicted[i] = itemstats[0][i].evicted;
+    for (instance_id = 0; instance_id < settings.num_instances; instance_id++) {
+        for (i = 0; i < LARGEST_ID; i++) {
+            evicted[i] = itemstats[instance_id][i].evicted;
+        }
     }
     mutex_unlock(&cache_lock);
 }
@@ -432,12 +437,14 @@ void item_stats_evictions(uint64_t *evicted) {
 void do_item_stats_totals(ADD_STAT add_stats, void *c) {
     itemstats_t totals;
     memset(&totals, 0, sizeof(itemstats_t));
-    int i;
-    for (i = 0; i < LARGEST_ID; i++) {
-        totals.expired_unfetched += itemstats[0][i].expired_unfetched;
-        totals.evicted_unfetched += itemstats[0][i].evicted_unfetched;
-        totals.evicted += itemstats[0][i].evicted;
-        totals.reclaimed += itemstats[0][i].reclaimed;
+    int i,instance_id;
+    for (instance_id = 0; instance_id < settings.num_instances; instance_id++) {
+        for (i = 0; i < LARGEST_ID; i++) {
+            totals.expired_unfetched += itemstats[instance_id][i].expired_unfetched;
+            totals.evicted_unfetched += itemstats[instance_id][i].evicted_unfetched;
+            totals.evicted += itemstats[instance_id][i].evicted;
+            totals.reclaimed += itemstats[instance_id][i].reclaimed;
+        }
     }
     APPEND_STAT("expired_unfetched", "%llu",
                 (unsigned long long)totals.expired_unfetched);
