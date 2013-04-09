@@ -375,13 +375,13 @@ void do_item_update(item *it) {
     }
 }
 
-int do_item_replace(item *it, item *new_it, const uint32_t hv) {
+int do_item_replace(item *it, item *new_it, const uint32_t hv, const int instance_id) {
     MEMCACHED_ITEM_REPLACE(ITEM_key(it), it->nkey, it->nbytes,
                            ITEM_key(new_it), new_it->nkey, new_it->nbytes);
     assert((it->it_flags & ITEM_SLABBED) == 0);
 
-    do_item_unlink(it, hv, 0+0);
-    return do_item_link(new_it, hv, 0+0);
+    do_item_unlink(it, hv, instance_id);
+    return do_item_link(new_it, hv, instance_id);
 }
 
 /*@null@*/

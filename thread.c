@@ -546,7 +546,8 @@ void item_remove(item *item) {
  * it to be thread-safe.
  */
 int item_replace(item *old_it, item *new_it, const uint32_t hv) {
-    return do_item_replace(old_it, new_it, hv);
+    int instance_id=0;
+    return do_item_replace(old_it, new_it, hv, instance_id);
 }
 
 /*
