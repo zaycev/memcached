@@ -538,7 +538,7 @@ void do_item_stats_sizes(ADD_STAT add_stats, void *c) {
 /** wrapper around assoc_find which does the lazy expiration logic */
 item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, const int instance_id) {
     //mutex_lock(&cache_lock);
-    item *it = assoc_find(key, nkey, hv);
+    item *it = assoc_find(key, nkey, hv, instance_id);
     if (it != NULL) {
         refcount_incr(&it->refcount);
         /* Optimization for slab reassignment. prevents popular items from

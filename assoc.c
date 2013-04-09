@@ -78,7 +78,7 @@ void assoc_init(const int hashtable_init,const int num_instances) {
     STATS_UNLOCK();
 }
 
-item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
+item *assoc_find(const char *key, const size_t nkey, const uint32_t hv, const int instance_id) {
     item *it;
     unsigned int oldbucket;
 
@@ -87,7 +87,7 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
     {
         it = old_hashtable[oldbucket];
     } else {
-        it = primary_hashtable[0][hv & hashmask(hashpower)];
+        it = primary_hashtable[instance_id][hv & hashmask(hashpower)];
     }
 
     item *ret = NULL;
@@ -107,7 +107,7 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
 /* returns the address of the item pointer before the key.  if *item == 0,
    the item wasn't found */
 
-static item** _hashitem_before (const char *key, const size_t nkey, const uint32_t hv) {
+static item** _hashitem_before (const char *key, const size_t nkey, const uint32_t hv, const int instance_id) {
     item **pos;
     unsigned int oldbucket;
 
@@ -116,7 +116,7 @@ static item** _hashitem_before (const char *key, const size_t nkey, const uint32
     {
         pos = &old_hashtable[oldbucket];
     } else {
-        pos = &primary_hashtable[0][hv & hashmask(hashpower)];
+        pos = &primary_hashtable[instance_id][hv & hashmask(hashpower)];
     }
 
     while (*pos && ((nkey != (*pos)->nkey) || memcmp(key, ITEM_key(*pos), nkey))) {
@@ -180,7 +180,8 @@ int assoc_insert(item *it, const uint32_t hv, const int instance_id) {
 }
 
 void assoc_delete(const char *key, const size_t nkey, const uint32_t hv) {
-    item **before = _hashitem_before(key, nkey, hv);
+    int instance_id=0;
+    item **before = _hashitem_before(key, nkey, hv, instance_id);
 
     if (*before) {
         item *nxt;
