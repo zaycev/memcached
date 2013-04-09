@@ -36,14 +36,19 @@ typedef struct {
     uint64_t evicted_unfetched;
 } itemstats_t;
 
-static item *heads[LARGEST_ID];
-static item *tails[LARGEST_ID];
-static itemstats_t itemstats[LARGEST_ID];
-static unsigned int sizes[LARGEST_ID];
+static item ***heads;
+static item ***tails;
+static itemstats_t **itemstats;
+static unsigned int **sizes;
 
-void item_stats_reset(void) {
+void item_stats_reset(const int num_instances) {
+    int i=0;
     mutex_lock(&cache_lock);
-    memset(itemstats, 0, sizeof(itemstats));
+    //Temporary way to reset stats, should change to memset on individual itemstats
+    for(i=0;i<num_instances;i++){
+        free(itemstats[i]);
+        itemstats[i] = calloc(LARGEST_ID,sizeof(itemstats_t));
+    }
     mutex_unlock(&cache_lock);
 }
 
@@ -108,7 +113,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
     void *hold_lock = NULL;
     rel_time_t oldest_live = settings.oldest_live;
 
-    search = tails[id];
+    search = tails[0][id];
     /* We walk up *only* for locked items. Never searching for expired.
      * Waste of CPU for almost all deployments */
     for (; tries > 0 && search != NULL; tries--, search=search->prev) {
@@ -126,7 +131,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
              * it in years, but we leave this code in to prevent failures
              * just in case */
             if (search->time + TAIL_REPAIR_TIME < current_time) {
-                itemstats[id].tailrepairs++;
+                itemstats[0][id].tailrepairs++;
                 search->refcount = 1;
                 do_item_unlink_nolock(search, hv);
             }
@@ -138,9 +143,9 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
         /* Expired or flushed */
         if ((search->exptime != 0 && search->exptime < current_time)
             || (search->time <= oldest_live && oldest_live <= current_time)) {
-            itemstats[id].reclaimed++;
+            itemstats[0][id].reclaimed++;
             if ((search->it_flags & ITEM_FETCHED) == 0) {
-                itemstats[id].expired_unfetched++;
+                itemstats[0][id].expired_unfetched++;
             }
             it = search;
             slabs_adjust_mem_requested(it->slabs_clsid, ITEM_ntotal(it), ntotal);
@@ -150,14 +155,14 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
         } else if ((it = slabs_alloc(ntotal, id)) == NULL) {
             tried_alloc = 1;
             if (settings.evict_to_free == 0) {
-                itemstats[id].outofmemory++;
+                itemstats[0][id].outofmemory++;
             } else {
-                itemstats[id].evicted++;
-                itemstats[id].evicted_time = current_time - search->time;
+                itemstats[0][id].evicted++;
+                itemstats[0][id].evicted_time = current_time - search->time;
                 if (search->exptime != 0)
-                    itemstats[id].evicted_nonzero++;
+                    itemstats[0][id].evicted_nonzero++;
                 if ((search->it_flags & ITEM_FETCHED) == 0) {
-                    itemstats[id].evicted_unfetched++;
+                    itemstats[0][id].evicted_unfetched++;
                 }
                 it = search;
                 slabs_adjust_mem_requested(it->slabs_clsid, ITEM_ntotal(it), ntotal);
@@ -188,13 +193,13 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
         it = slabs_alloc(ntotal, id);
 
     if (it == NULL) {
-        itemstats[id].outofmemory++;
+        itemstats[0][id].outofmemory++;
         mutex_unlock(&cache_lock);
         return NULL;
     }
 
     assert(it->slabs_clsid == 0);
-    assert(it != heads[id]);
+    assert(it != heads[0][id]);
 
     /* Item initialization can happen outside of the lock; the item's already
      * been removed from the slab LRU.
@@ -219,8 +224,8 @@ void item_free(item *it) {
     size_t ntotal = ITEM_ntotal(it);
     unsigned int clsid;
     assert((it->it_flags & ITEM_LINKED) == 0);
-    assert(it != heads[it->slabs_clsid]);
-    assert(it != tails[it->slabs_clsid]);
+    assert(it != heads[0][it->slabs_clsid]);
+    assert(it != tails[0][it->slabs_clsid]);
     assert(it->refcount == 0);
 
     /* so slab size changer can tell later if item is already free or not */
@@ -252,8 +257,8 @@ static void item_link_q(item *it) { /* item is the new head */
     assert(it->slabs_clsid < LARGEST_ID);
     assert((it->it_flags & ITEM_SLABBED) == 0);
 
-    head = &heads[it->slabs_clsid];
-    tail = &tails[it->slabs_clsid];
+    head = &heads[0][it->slabs_clsid];
+    tail = &tails[0][it->slabs_clsid];
     assert(it != *head);
     assert((*head && *tail) || (*head == 0 && *tail == 0));
     it->prev = 0;
@@ -261,15 +266,15 @@ static void item_link_q(item *it) { /* item is the new head */
     if (it->next) it->next->prev = it;
     *head = it;
     if (*tail == 0) *tail = it;
-    sizes[it->slabs_clsid]++;
+    sizes[0][it->slabs_clsid]++;
     return;
 }
 
 static void item_unlink_q(item *it) {
     item **head, **tail;
     assert(it->slabs_clsid < LARGEST_ID);
-    head = &heads[it->slabs_clsid];
-    tail = &tails[it->slabs_clsid];
+    head = &heads[0][it->slabs_clsid];
+    tail = &tails[0][it->slabs_clsid];
 
     if (*head == it) {
         assert(it->prev == 0);
@@ -284,7 +289,7 @@ static void item_unlink_q(item *it) {
 
     if (it->next) it->next->prev = it->prev;
     if (it->prev) it->prev->next = it->next;
-    sizes[it->slabs_clsid]--;
+    sizes[0][it->slabs_clsid]--;
     return;
 }
 
@@ -386,7 +391,7 @@ char *do_item_cachedump(const unsigned int slabs_clsid, const unsigned int limit
     char key_temp[KEY_MAX_LENGTH + 1];
     char temp[512];
 
-    it = heads[slabs_clsid];
+    it = heads[0][slabs_clsid];
 
     buffer = malloc((size_t)memlimit);
     if (buffer == 0) return NULL;
@@ -419,7 +424,7 @@ void item_stats_evictions(uint64_t *evicted) {
     int i;
     mutex_lock(&cache_lock);
     for (i = 0; i < LARGEST_ID; i++) {
-        evicted[i] = itemstats[i].evicted;
+        evicted[i] = itemstats[0][i].evicted;
     }
     mutex_unlock(&cache_lock);
 }
@@ -429,10 +434,10 @@ void do_item_stats_totals(ADD_STAT add_stats, void *c) {
     memset(&totals, 0, sizeof(itemstats_t));
     int i;
     for (i = 0; i < LARGEST_ID; i++) {
-        totals.expired_unfetched += itemstats[i].expired_unfetched;
-        totals.evicted_unfetched += itemstats[i].evicted_unfetched;
-        totals.evicted += itemstats[i].evicted;
-        totals.reclaimed += itemstats[i].reclaimed;
+        totals.expired_unfetched += itemstats[0][i].expired_unfetched;
+        totals.evicted_unfetched += itemstats[0][i].evicted_unfetched;
+        totals.evicted += itemstats[0][i].evicted;
+        totals.reclaimed += itemstats[0][i].reclaimed;
     }
     APPEND_STAT("expired_unfetched", "%llu",
                 (unsigned long long)totals.expired_unfetched);
@@ -447,33 +452,33 @@ void do_item_stats_totals(ADD_STAT add_stats, void *c) {
 void do_item_stats(ADD_STAT add_stats, void *c) {
     int i;
     for (i = 0; i < LARGEST_ID; i++) {
-        if (tails[i] != NULL) {
+        if (tails[0][i] != NULL) {
             const char *fmt = "items:%d:%s";
             char key_str[STAT_KEY_LEN];
             char val_str[STAT_VAL_LEN];
             int klen = 0, vlen = 0;
-            if (tails[i] == NULL) {
+            if (tails[0][i] == NULL) {
                 /* We removed all of the items in this slab class */
                 continue;
             }
-            APPEND_NUM_FMT_STAT(fmt, i, "number", "%u", sizes[i]);
-            APPEND_NUM_FMT_STAT(fmt, i, "age", "%u", current_time - tails[i]->time);
+            APPEND_NUM_FMT_STAT(fmt, i, "number", "%u", sizes[0][i]);
+            APPEND_NUM_FMT_STAT(fmt, i, "age", "%u", current_time - tails[0][i]->time);
             APPEND_NUM_FMT_STAT(fmt, i, "evicted",
-                                "%llu", (unsigned long long)itemstats[i].evicted);
+                                "%llu", (unsigned long long)itemstats[0][i].evicted);
             APPEND_NUM_FMT_STAT(fmt, i, "evicted_nonzero",
-                                "%llu", (unsigned long long)itemstats[i].evicted_nonzero);
+                                "%llu", (unsigned long long)itemstats[0][i].evicted_nonzero);
             APPEND_NUM_FMT_STAT(fmt, i, "evicted_time",
-                                "%u", itemstats[i].evicted_time);
+                                "%u", itemstats[0][i].evicted_time);
             APPEND_NUM_FMT_STAT(fmt, i, "outofmemory",
-                                "%llu", (unsigned long long)itemstats[i].outofmemory);
+                                "%llu", (unsigned long long)itemstats[0][i].outofmemory);
             APPEND_NUM_FMT_STAT(fmt, i, "tailrepairs",
-                                "%llu", (unsigned long long)itemstats[i].tailrepairs);
+                                "%llu", (unsigned long long)itemstats[0][i].tailrepairs);
             APPEND_NUM_FMT_STAT(fmt, i, "reclaimed",
-                                "%llu", (unsigned long long)itemstats[i].reclaimed);
+                                "%llu", (unsigned long long)itemstats[0][i].reclaimed);
             APPEND_NUM_FMT_STAT(fmt, i, "expired_unfetched",
-                                "%llu", (unsigned long long)itemstats[i].expired_unfetched);
+                                "%llu", (unsigned long long)itemstats[0][i].expired_unfetched);
             APPEND_NUM_FMT_STAT(fmt, i, "evicted_unfetched",
-                                "%llu", (unsigned long long)itemstats[i].evicted_unfetched);
+                                "%llu", (unsigned long long)itemstats[0][i].evicted_unfetched);
         }
     }
 
@@ -494,7 +499,7 @@ void do_item_stats_sizes(ADD_STAT add_stats, void *c) {
 
         /* build the histogram */
         for (i = 0; i < LARGEST_ID; i++) {
-            item *iter = heads[i];
+            item *iter = heads[0][i];
             while (iter) {
                 int ntotal = ITEM_ntotal(iter);
                 int bucket = ntotal / 32;
@@ -594,7 +599,7 @@ void do_item_flush_expired(void) {
          * back until we hit an item older than the oldest_live time.
          * The oldest_live checking will auto-expire the remaining items.
          */
-        for (iter = heads[i]; iter != NULL; iter = next) {
+        for (iter = heads[0][i]; iter != NULL; iter = next) {
             if (iter->time >= settings.oldest_live) {
                 next = iter->next;
                 if ((iter->it_flags & ITEM_SLABBED) == 0) {
@@ -604,6 +609,26 @@ void do_item_flush_expired(void) {
                 /* We've hit the first old item. Continue to the next queue. */
                 break;
             }
+        }
+    }
+}
+
+void lru_init(const int num_instances){
+    int i=0;
+    heads = calloc(num_instances, sizeof(item **));
+    tails = calloc(num_instances, sizeof(item **));
+    itemstats = calloc(num_instances, sizeof(itemstats_t *));
+    sizes = calloc(num_instances, sizeof(unsigned int *));
+
+    for(i=0;i<num_instances;i++){
+        heads[i] = calloc(LARGEST_ID, sizeof(item *));
+        tails[i] = calloc(LARGEST_ID, sizeof(item *));
+        itemstats[i] = calloc(LARGEST_ID,sizeof(itemstats_t));
+        sizes[i] = calloc(LARGEST_ID,sizeof(unsigned int));
+
+        if (! heads[i] || !tails[i] || !itemstats[i] || !sizes[i]) {
+            fprintf(stderr, "Failed to init LRU.\n");
+            exit(EXIT_FAILURE);
         }
     }
 }

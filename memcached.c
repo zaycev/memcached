@@ -195,7 +195,7 @@ static void stats_reset(void) {
     stats_prefix_clear();
     STATS_UNLOCK();
     threadlocal_stats_reset();
-    item_stats_reset();
+    item_stats_reset(settings.num_instances);
 }
 
 static void settings_init(void) {
@@ -5155,6 +5155,7 @@ int main (int argc, char **argv) {
     stats_init();
     assoc_init(settings.hashpower_init,settings.num_instances);
     conn_init();
+    lru_init(settings.num_instances);
     slabs_init(settings.maxbytes, settings.factor, preallocate, settings.num_instances);
 
     /*
