@@ -522,7 +522,7 @@ int item_link(item *item) {
 
     hv = hash(ITEM_key(item), item->nkey, 0);
     item_lock(hv);
-    ret = do_item_link(item, hv);
+    ret = do_item_link(item, hv, 0+0);
     item_unlock(hv);
     return ret;
 }
@@ -556,7 +556,7 @@ void item_unlink(item *item) {
     uint32_t hv;
     hv = hash(ITEM_key(item), item->nkey, 0);
     item_lock(hv);
-    do_item_unlink(item, hv);
+    do_item_unlink(item, hv, 0+0);
     item_unlock(hv);
 }
 

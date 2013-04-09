@@ -296,8 +296,7 @@ static void item_unlink_q(item *it, const int instance_id) {
     return;
 }
 
-int do_item_link(item *it, const uint32_t hv) {
-    int instance_id=0;
+int do_item_link(item *it, const uint32_t hv, const int instance_id) {
     MEMCACHED_ITEM_LINK(ITEM_key(it), it->nkey, it->nbytes);
     assert((it->it_flags & (ITEM_LINKED|ITEM_SLABBED)) == 0);
     mutex_lock(&cache_lock);
@@ -320,8 +319,7 @@ int do_item_link(item *it, const uint32_t hv) {
     return 1;
 }
 
-void do_item_unlink(item *it, const uint32_t hv) {
-    int instance_id=0;
+void do_item_unlink(item *it, const uint32_t hv, const int instance_id) {
     MEMCACHED_ITEM_UNLINK(ITEM_key(it), it->nkey, it->nbytes);
     mutex_lock(&cache_lock);
     if ((it->it_flags & ITEM_LINKED) != 0) {
@@ -383,8 +381,8 @@ int do_item_replace(item *it, item *new_it, const uint32_t hv) {
                            ITEM_key(new_it), new_it->nkey, new_it->nbytes);
     assert((it->it_flags & ITEM_SLABBED) == 0);
 
-    do_item_unlink(it, hv);
-    return do_item_link(new_it, hv);
+    do_item_unlink(it, hv, 0+0);
+    return do_item_link(new_it, hv, 0+0);
 }
 
 /*@null@*/
@@ -541,6 +539,7 @@ void do_item_stats_sizes(ADD_STAT add_stats, void *c) {
 /** wrapper around assoc_find which does the lazy expiration logic */
 item *do_item_get(const char *key, const size_t nkey, const uint32_t hv) {
     //mutex_lock(&cache_lock);
+    int instance_id=0;
     item *it = assoc_find(key, nkey, hv);
     if (it != NULL) {
         refcount_incr(&it->refcount);
@@ -569,14 +568,14 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv) {
     if (it != NULL) {
         if (settings.oldest_live != 0 && settings.oldest_live <= current_time &&
             it->time <= settings.oldest_live) {
-            do_item_unlink(it, hv);
+            do_item_unlink(it, hv, instance_id);
             do_item_remove(it);
             it = NULL;
             if (was_found) {
                 fprintf(stderr, " -nuked by flush");
             }
         } else if (it->exptime != 0 && it->exptime <= current_time) {
-            do_item_unlink(it, hv);
+            do_item_unlink(it, hv, instance_id);
             do_item_remove(it);
             it = NULL;
             if (was_found) {

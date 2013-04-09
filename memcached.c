@@ -2356,7 +2356,7 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
             if (old_it != NULL)
                 item_replace(old_it, it, hv);
             else
-                do_item_link(it, hv);
+                do_item_link(it, hv, 0+0);
 
             c->cas = ITEM_get_cas(it);
 
