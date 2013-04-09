@@ -155,7 +155,7 @@ static void assoc_start_expand(void) {
 }
 
 /* Note: this isn't an assoc_update.  The key must not already exist to call this */
-int assoc_insert(item *it, const uint32_t hv) {
+int assoc_insert(item *it, const uint32_t hv, const int instance_id) {
     unsigned int oldbucket;
 
 //    assert(assoc_find(ITEM_key(it), it->nkey) == 0);  /* shouldn't have duplicately named things defined */
@@ -166,8 +166,8 @@ int assoc_insert(item *it, const uint32_t hv) {
         it->h_next = old_hashtable[oldbucket];
         old_hashtable[oldbucket] = it;
     } else {
-        it->h_next = primary_hashtable[0][hv & hashmask(hashpower)];
-        primary_hashtable[0][hv & hashmask(hashpower)] = it;
+        it->h_next = primary_hashtable[instance_id][hv & hashmask(hashpower)];
+        primary_hashtable[instance_id][hv & hashmask(hashpower)] = it;
     }
 
     hash_items++;

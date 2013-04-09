@@ -311,7 +311,7 @@ int do_item_link(item *it, const uint32_t hv, const int instance_id) {
 
     /* Allocate a new CAS ID on link. */
     ITEM_set_cas(it, (settings.use_cas) ? get_cas_id() : 0);
-    assoc_insert(it, hv);
+    assoc_insert(it, hv, instance_id);
     item_link_q(it, instance_id);
     refcount_incr(&it->refcount);
     mutex_unlock(&cache_lock);
