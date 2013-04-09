@@ -592,8 +592,7 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, const i
 }
 
 item *do_item_touch(const char *key, size_t nkey, uint32_t exptime,
-                    const uint32_t hv) {
-    int instance_id=0;
+                    const uint32_t hv, const int instance_id) {
     item *it = do_item_get(key, nkey, hv, instance_id);
     if (it != NULL) {
         it->exptime = exptime;

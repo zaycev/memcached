@@ -22,7 +22,7 @@ void do_item_stats_sizes(ADD_STAT add_stats, void *c);
 void do_item_flush_expired(void);
 
 item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, const int instance_id);
-item *do_item_touch(const char *key, const size_t nkey, uint32_t exptime, const uint32_t hv);
+item *do_item_touch(const char *key, const size_t nkey, uint32_t exptime, const uint32_t hv, const int instance_id);
 void item_stats_reset(const int num_instances);
 extern pthread_mutex_t cache_lock;
 void item_stats_evictions(uint64_t *evicted);

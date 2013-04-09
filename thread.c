@@ -508,8 +508,10 @@ item *item_touch(const char *key, size_t nkey, uint32_t exptime) {
     item *it;
     uint32_t hv;
     hv = hash(key, nkey, 0);
+    int instance_id=0;
+
     item_lock(hv);
-    it = do_item_touch(key, nkey, exptime, hv);
+    it = do_item_touch(key, nkey, exptime, hv, instance_id);
     item_unlock(hv);
     return it;
 }
