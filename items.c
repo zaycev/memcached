@@ -14,8 +14,8 @@
 #include <assert.h>
 
 /* Forward Declarations */
-static void item_link_q(item *it);
-static void item_unlink_q(item *it);
+static void item_link_q(item *it, const int instance_id);
+static void item_unlink_q(item *it, const int instance_id);
 
 /*
  * We only reposition items in the LRU queue if they haven't been repositioned
@@ -223,10 +223,13 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
 void item_free(item *it) {
     size_t ntotal = ITEM_ntotal(it);
     unsigned int clsid;
+    int instance_id = 0;
     assert((it->it_flags & ITEM_LINKED) == 0);
-    assert(it != heads[0][it->slabs_clsid]);
-    assert(it != tails[0][it->slabs_clsid]);
+    assert(it != heads[instance_id][it->slabs_clsid]);
+    assert(it != tails[instance_id][it->slabs_clsid]);
     assert(it->refcount == 0);
+
+    instance_id=0;// unnecessary line is to remove warning
 
     /* so slab size changer can tell later if item is already free or not */
     clsid = it->slabs_clsid;
@@ -252,13 +255,13 @@ bool item_size_ok(const size_t nkey, const int flags, const int nbytes) {
     return slabs_clsid(ntotal) != 0;
 }
 
-static void item_link_q(item *it) { /* item is the new head */
+static void item_link_q(item *it, const int instance_id) { /* item is the new head */
     item **head, **tail;
     assert(it->slabs_clsid < LARGEST_ID);
     assert((it->it_flags & ITEM_SLABBED) == 0);
 
-    head = &heads[0][it->slabs_clsid];
-    tail = &tails[0][it->slabs_clsid];
+    head = &heads[instance_id][it->slabs_clsid];
+    tail = &tails[instance_id][it->slabs_clsid];
     assert(it != *head);
     assert((*head && *tail) || (*head == 0 && *tail == 0));
     it->prev = 0;
@@ -266,15 +269,15 @@ static void item_link_q(item *it) { /* item is the new head */
     if (it->next) it->next->prev = it;
     *head = it;
     if (*tail == 0) *tail = it;
-    sizes[0][it->slabs_clsid]++;
+    sizes[instance_id][it->slabs_clsid]++;
     return;
 }
 
-static void item_unlink_q(item *it) {
+static void item_unlink_q(item *it, const int instance_id) {
     item **head, **tail;
     assert(it->slabs_clsid < LARGEST_ID);
-    head = &heads[0][it->slabs_clsid];
-    tail = &tails[0][it->slabs_clsid];
+    head = &heads[instance_id][it->slabs_clsid];
+    tail = &tails[instance_id][it->slabs_clsid];
 
     if (*head == it) {
         assert(it->prev == 0);
@@ -289,11 +292,12 @@ static void item_unlink_q(item *it) {
 
     if (it->next) it->next->prev = it->prev;
     if (it->prev) it->prev->next = it->next;
-    sizes[0][it->slabs_clsid]--;
+    sizes[instance_id][it->slabs_clsid]--;
     return;
 }
 
 int do_item_link(item *it, const uint32_t hv) {
+    int instance_id=0;
     MEMCACHED_ITEM_LINK(ITEM_key(it), it->nkey, it->nbytes);
     assert((it->it_flags & (ITEM_LINKED|ITEM_SLABBED)) == 0);
     mutex_lock(&cache_lock);
@@ -309,7 +313,7 @@ int do_item_link(item *it, const uint32_t hv) {
     /* Allocate a new CAS ID on link. */
     ITEM_set_cas(it, (settings.use_cas) ? get_cas_id() : 0);
     assoc_insert(it, hv);
-    item_link_q(it);
+    item_link_q(it, instance_id);
     refcount_incr(&it->refcount);
     mutex_unlock(&cache_lock);
 
@@ -317,6 +321,7 @@ int do_item_link(item *it, const uint32_t hv) {
 }
 
 void do_item_unlink(item *it, const uint32_t hv) {
+    int instance_id=0;
     MEMCACHED_ITEM_UNLINK(ITEM_key(it), it->nkey, it->nbytes);
     mutex_lock(&cache_lock);
     if ((it->it_flags & ITEM_LINKED) != 0) {
@@ -326,7 +331,7 @@ void do_item_unlink(item *it, const uint32_t hv) {
         stats.curr_items -= 1;
         STATS_UNLOCK();
         assoc_delete(ITEM_key(it), it->nkey, hv);
-        item_unlink_q(it);
+        item_unlink_q(it, instance_id);
         do_item_remove(it);
     }
     mutex_unlock(&cache_lock);
@@ -334,6 +339,7 @@ void do_item_unlink(item *it, const uint32_t hv) {
 
 /* FIXME: Is it necessary to keep this copy/pasted code? */
 void do_item_unlink_nolock(item *it, const uint32_t hv) {
+    int instance_id=0;
     MEMCACHED_ITEM_UNLINK(ITEM_key(it), it->nkey, it->nbytes);
     if ((it->it_flags & ITEM_LINKED) != 0) {
         it->it_flags &= ~ITEM_LINKED;
@@ -342,7 +348,7 @@ void do_item_unlink_nolock(item *it, const uint32_t hv) {
         stats.curr_items -= 1;
         STATS_UNLOCK();
         assoc_delete(ITEM_key(it), it->nkey, hv);
-        item_unlink_q(it);
+        item_unlink_q(it, instance_id);
         do_item_remove(it);
     }
 }
@@ -357,15 +363,16 @@ void do_item_remove(item *it) {
 }
 
 void do_item_update(item *it) {
+    int instance_id=0;
     MEMCACHED_ITEM_UPDATE(ITEM_key(it), it->nkey, it->nbytes);
     if (it->time < current_time - ITEM_UPDATE_INTERVAL) {
         assert((it->it_flags & ITEM_SLABBED) == 0);
 
         mutex_lock(&cache_lock);
         if ((it->it_flags & ITEM_LINKED) != 0) {
-            item_unlink_q(it);
+            item_unlink_q(it, instance_id);
             it->time = current_time;
-            item_link_q(it);
+            item_link_q(it, instance_id);
         }
         mutex_unlock(&cache_lock);
     }
