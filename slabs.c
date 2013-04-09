@@ -59,7 +59,7 @@ static pthread_mutex_t slabs_rebalance_lock = PTHREAD_MUTEX_INITIALIZER;
  */
 static int do_slabs_newslab(const unsigned int id);
 static void *memory_allocate(size_t size);
-static void do_slabs_free(void *ptr, const size_t size, unsigned int id);
+static void do_slabs_free(void *ptr, const size_t size, unsigned int id, const int instance_id);
 
 /* Preallocate as many slab pages as possible (called from slabs_init)
    on start-up, so users don't get confused out-of-memory errors when
@@ -77,12 +77,12 @@ static void slabs_preallocate (const unsigned int maxslabs);
  * 0 means error: can't store such a large object
  */
 
-unsigned int slabs_clsid(const size_t size) {
+unsigned int slabs_clsid(const size_t size, const int instance_id) {
     int res = POWER_SMALLEST;
 
     if (size == 0)
         return 0;
-    while (size > slabclass[0][res].size)
+    while (size > slabclass[instance_id][res].size)
         if (res++ == power_largest)     /* won't fit in the biggest slab */
             return 0;
     return res;
@@ -176,8 +176,8 @@ static void slabs_preallocate (const unsigned int maxslabs) {
 
 }
 
-static int grow_slab_list (const unsigned int id) {
-    slabclass_t *p = &slabclass[0][id];
+static int grow_slab_list (const unsigned int id, const int instance_id) {
+    slabclass_t *p = &slabclass[instance_id][id];
     if (p->slabs == p->list_size) {
         size_t new_size =  (p->list_size != 0) ? p->list_size * 2 : 16;
         void *new_list = realloc(p->slab_list, new_size * sizeof(void *));
@@ -188,23 +188,24 @@ static int grow_slab_list (const unsigned int id) {
     return 1;
 }
 
-static void split_slab_page_into_freelist(char *ptr, const unsigned int id) {
-    slabclass_t *p = &slabclass[0][id];
+static void split_slab_page_into_freelist(char *ptr, const unsigned int id, const int instance_id) {
+    slabclass_t *p = &slabclass[instance_id][id];
     int x;
     for (x = 0; x < p->perslab; x++) {
-        do_slabs_free(ptr, 0, id);
+        do_slabs_free(ptr, 0, id, instance_id);
         ptr += p->size;
     }
 }
 
 static int do_slabs_newslab(const unsigned int id) {
-    slabclass_t *p = &slabclass[0][id];
+    int instance_id=0;
+    slabclass_t *p = &slabclass[instance_id][id];
     int len = settings.slab_reassign ? settings.item_size_max
         : p->size * p->perslab;
     char *ptr;
 
     if ((mem_limit && mem_malloced + len > mem_limit && p->slabs > 0) ||
-        (grow_slab_list(id) == 0) ||
+        (grow_slab_list(id, instance_id) == 0) ||
         ((ptr = memory_allocate((size_t)len)) == 0)) {
 
         MEMCACHED_SLABS_SLABCLASS_ALLOCATE_FAILED(id);
@@ -212,7 +213,7 @@ static int do_slabs_newslab(const unsigned int id) {
     }
 
     memset(ptr, 0, (size_t)len);
-    split_slab_page_into_freelist(ptr, id);
+    split_slab_page_into_freelist(ptr, id, instance_id);
 
     p->slab_list[p->slabs++] = ptr;
     mem_malloced += len;
@@ -222,7 +223,7 @@ static int do_slabs_newslab(const unsigned int id) {
 }
 
 /*@null@*/
-static void *do_slabs_alloc(const size_t size, unsigned int id) {
+static void *do_slabs_alloc(const size_t size, unsigned int id, const int instance_id) {
     slabclass_t *p;
     void *ret = NULL;
     item *it = NULL;
@@ -232,7 +233,7 @@ static void *do_slabs_alloc(const size_t size, unsigned int id) {
         return NULL;
     }
 
-    p = &slabclass[0][id];
+    p = &slabclass[instance_id][id];
     assert(p->sl_curr == 0 || ((item *)p->slots)->slabs_clsid == 0);
 
     /* fail unless we have space at the end of a recently allocated page,
@@ -259,7 +260,7 @@ static void *do_slabs_alloc(const size_t size, unsigned int id) {
     return ret;
 }
 
-static void do_slabs_free(void *ptr, const size_t size, unsigned int id) {
+static void do_slabs_free(void *ptr, const size_t size, unsigned int id, const int instance_id) {
     slabclass_t *p;
     item *it;
 
@@ -269,7 +270,7 @@ static void do_slabs_free(void *ptr, const size_t size, unsigned int id) {
         return;
 
     MEMCACHED_SLABS_FREE(size, id, ptr);
-    p = &slabclass[0][id];
+    p = &slabclass[instance_id][id];
 
     it = (item *)ptr;
     it->it_flags |= ITEM_SLABBED;
@@ -402,18 +403,18 @@ static void *memory_allocate(size_t size) {
     return ret;
 }
 
-void *slabs_alloc(size_t size, unsigned int id) {
+void *slabs_alloc(size_t size, unsigned int id, const int instance_id) {
     void *ret;
 
     pthread_mutex_lock(&slabs_lock);
-    ret = do_slabs_alloc(size, id);
+    ret = do_slabs_alloc(size, id, instance_id);
     pthread_mutex_unlock(&slabs_lock);
     return ret;
 }
 
-void slabs_free(void *ptr, size_t size, unsigned int id) {
+void slabs_free(void *ptr, size_t size, unsigned int id, const int instance_id) {
     pthread_mutex_lock(&slabs_lock);
-    do_slabs_free(ptr, size, id);
+    do_slabs_free(ptr, size, id, instance_id);
     pthread_mutex_unlock(&slabs_lock);
 }
 
@@ -446,6 +447,7 @@ static volatile int do_run_slab_rebalance_thread = 1;
 int slab_bulk_check = DEFAULT_SLAB_BULK_CHECK;
 
 static int slab_rebalance_start(void) {
+    int instance_id=0;
     slabclass_t *s_cls;
     int no_go = 0;
 
@@ -461,7 +463,7 @@ static int slab_rebalance_start(void) {
 
     s_cls = &slabclass[0][slab_rebal.s_clsid];
 
-    if (!grow_slab_list(slab_rebal.d_clsid)) {
+    if (!grow_slab_list(slab_rebal.d_clsid, instance_id)) {
         no_go = -1;
     }
 
@@ -603,14 +605,16 @@ static int slab_rebalance_move(void) {
 }
 
 static void slab_rebalance_finish(void) {
+    int instance_id=0;
+
     slabclass_t *s_cls;
     slabclass_t *d_cls;
 
     pthread_mutex_lock(&cache_lock);
     pthread_mutex_lock(&slabs_lock);
 
-    s_cls = &slabclass[0][slab_rebal.s_clsid];
-    d_cls   = &slabclass[0][slab_rebal.d_clsid];
+    s_cls = &slabclass[instance_id][slab_rebal.s_clsid];
+    d_cls   = &slabclass[instance_id][slab_rebal.d_clsid];
 
     /* At this point the stolen slab is completely clear */
     s_cls->slab_list[s_cls->killing - 1] =
@@ -622,7 +626,7 @@ static void slab_rebalance_finish(void) {
 
     d_cls->slab_list[d_cls->slabs++] = slab_rebal.slab_start;
     split_slab_page_into_freelist(slab_rebal.slab_start,
-        slab_rebal.d_clsid);
+        slab_rebal.d_clsid, instance_id);
 
     slab_rebal.done       = 0;
     slab_rebal.s_clsid    = 0;

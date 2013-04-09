@@ -16,13 +16,13 @@ void slabs_init(const size_t limit, const double factor, const bool prealloc,con
  * 0 means error: can't store such a large object
  */
 
-unsigned int slabs_clsid(const size_t size);
+unsigned int slabs_clsid(const size_t size, const int instance_id);
 
 /** Allocate object of given length. 0 on error */ /*@null@*/
-void *slabs_alloc(const size_t size, unsigned int id);
+void *slabs_alloc(const size_t size, unsigned int id, const int instance_id);
 
 /** Free previously allocated object */
-void slabs_free(void *ptr, size_t size, unsigned int id);
+void slabs_free(void *ptr, size_t size, unsigned int id, const int instance_id);
 
 /** Adjust the stats for memory requested */
 void slabs_adjust_mem_requested(unsigned int id, size_t old, size_t ntotal);

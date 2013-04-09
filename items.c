@@ -101,7 +101,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
         ntotal += sizeof(uint64_t);
     }
 
-    unsigned int id = slabs_clsid(ntotal);
+    unsigned int id = slabs_clsid(ntotal,instance_id);
     if (id == 0)
         return 0;
 
@@ -152,7 +152,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
             do_item_unlink_nolock(it, hv, instance_id);
             /* Initialize the item block: */
             it->slabs_clsid = 0;
-        } else if ((it = slabs_alloc(ntotal, id)) == NULL) {
+        } else if ((it = slabs_alloc(ntotal, id, instance_id)) == NULL) {
             tried_alloc = 1;
             if (settings.evict_to_free == 0) {
                 itemstats[instance_id][id].outofmemory++;
@@ -190,7 +190,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
     }
 
     if (!tried_alloc && (tries == 0 || search == NULL))
-        it = slabs_alloc(ntotal, id);
+        it = slabs_alloc(ntotal, id, instance_id);
 
     if (it == NULL) {
         itemstats[instance_id][id].outofmemory++;
@@ -235,7 +235,7 @@ void item_free(item *it) {
     clsid = it->slabs_clsid;
     it->slabs_clsid = 0;
     DEBUG_REFCNT(it, 'F');
-    slabs_free(it, ntotal, clsid);
+    slabs_free(it, ntotal, clsid, instance_id);
 }
 
 /**
@@ -245,6 +245,7 @@ void item_free(item *it) {
 bool item_size_ok(const size_t nkey, const int flags, const int nbytes) {
     char prefix[40];
     uint8_t nsuffix;
+    int instance_id=0;
 
     size_t ntotal = item_make_header(nkey + 1, flags, nbytes,
                                      prefix, &nsuffix);
@@ -252,7 +253,7 @@ bool item_size_ok(const size_t nkey, const int flags, const int nbytes) {
         ntotal += sizeof(uint64_t);
     }
 
-    return slabs_clsid(ntotal) != 0;
+    return slabs_clsid(ntotal,instance_id) != 0;
 }
 
 static void item_link_q(item *it, const int instance_id) { /* item is the new head */
