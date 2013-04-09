@@ -113,30 +113,30 @@ void slabs_init(const size_t limit, const double factor, const bool prealloc, co
     slabclass = calloc(num_instances,sizeof(slabclass_t*));
     for(j=0;j<num_instances;j++){
         slabclass[j] = calloc(MAX_NUMBER_OF_SLAB_CLASSES,sizeof(slabclass_t));
-    }
 
-    memset(slabclass[0], 0, sizeof(slabclass[0]));
+        memset(slabclass[j], 0, sizeof(slabclass[j]));
 
-    while (++i < POWER_LARGEST && size <= settings.item_size_max / factor) {
-        /* Make sure items are always n-byte aligned */
-        if (size % CHUNK_ALIGN_BYTES)
-            size += CHUNK_ALIGN_BYTES - (size % CHUNK_ALIGN_BYTES);
+        while (++i < POWER_LARGEST && size <= settings.item_size_max / factor) {
+            /* Make sure items are always n-byte aligned */
+            if (size % CHUNK_ALIGN_BYTES)
+                size += CHUNK_ALIGN_BYTES - (size % CHUNK_ALIGN_BYTES);
 
-        slabclass[0][i].size = size;
-        slabclass[0][i].perslab = settings.item_size_max / slabclass[0][i].size;
-        size *= factor;
+            slabclass[j][i].size = size;
+            slabclass[j][i].perslab = settings.item_size_max / slabclass[j][i].size;
+            size *= factor;
+            if (settings.verbose > 1) {
+                fprintf(stderr, "slab class %3d: chunk size %9u perslab %7u\n",
+                        i, slabclass[j][i].size, slabclass[j][i].perslab);
+            }
+        }
+
+        power_largest = i;
+        slabclass[j][power_largest].size = settings.item_size_max;
+        slabclass[j][power_largest].perslab = 1;
         if (settings.verbose > 1) {
             fprintf(stderr, "slab class %3d: chunk size %9u perslab %7u\n",
-                    i, slabclass[0][i].size, slabclass[0][i].perslab);
+                    i, slabclass[j][i].size, slabclass[j][i].perslab);
         }
-    }
-
-    power_largest = i;
-    slabclass[0][power_largest].size = settings.item_size_max;
-    slabclass[0][power_largest].perslab = 1;
-    if (settings.verbose > 1) {
-        fprintf(stderr, "slab class %3d: chunk size %9u perslab %7u\n",
-                i, slabclass[0][i].size, slabclass[0][i].perslab);
     }
 
     /* for the test suite:  faking of how much we've already malloc'd */
