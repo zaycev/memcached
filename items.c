@@ -92,7 +92,7 @@ static size_t item_make_header(const uint8_t nkey, const int flags, const int nb
 /*@null@*/
 item *do_item_alloc(char *key, const size_t nkey, const int flags,
                     const rel_time_t exptime, const int nbytes,
-                    const uint32_t cur_hv) {
+                    const uint32_t cur_hv, const int instance_id) {
     uint8_t nsuffix;
     item *it = NULL;
     char suffix[40];
@@ -113,7 +113,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
     void *hold_lock = NULL;
     rel_time_t oldest_live = settings.oldest_live;
 
-    search = tails[0][id];
+    search = tails[instance_id][id];
     /* We walk up *only* for locked items. Never searching for expired.
      * Waste of CPU for almost all deployments */
     for (; tries > 0 && search != NULL; tries--, search=search->prev) {
@@ -131,7 +131,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
              * it in years, but we leave this code in to prevent failures
              * just in case */
             if (search->time + TAIL_REPAIR_TIME < current_time) {
-                itemstats[0][id].tailrepairs++;
+                itemstats[instance_id][id].tailrepairs++;
                 search->refcount = 1;
                 do_item_unlink_nolock(search, hv);
             }
@@ -143,9 +143,9 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
         /* Expired or flushed */
         if ((search->exptime != 0 && search->exptime < current_time)
             || (search->time <= oldest_live && oldest_live <= current_time)) {
-            itemstats[0][id].reclaimed++;
+            itemstats[instance_id][id].reclaimed++;
             if ((search->it_flags & ITEM_FETCHED) == 0) {
-                itemstats[0][id].expired_unfetched++;
+                itemstats[instance_id][id].expired_unfetched++;
             }
             it = search;
             slabs_adjust_mem_requested(it->slabs_clsid, ITEM_ntotal(it), ntotal);
@@ -155,14 +155,14 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
         } else if ((it = slabs_alloc(ntotal, id)) == NULL) {
             tried_alloc = 1;
             if (settings.evict_to_free == 0) {
-                itemstats[0][id].outofmemory++;
+                itemstats[instance_id][id].outofmemory++;
             } else {
-                itemstats[0][id].evicted++;
-                itemstats[0][id].evicted_time = current_time - search->time;
+                itemstats[instance_id][id].evicted++;
+                itemstats[instance_id][id].evicted_time = current_time - search->time;
                 if (search->exptime != 0)
-                    itemstats[0][id].evicted_nonzero++;
+                    itemstats[instance_id][id].evicted_nonzero++;
                 if ((search->it_flags & ITEM_FETCHED) == 0) {
-                    itemstats[0][id].evicted_unfetched++;
+                    itemstats[instance_id][id].evicted_unfetched++;
                 }
                 it = search;
                 slabs_adjust_mem_requested(it->slabs_clsid, ITEM_ntotal(it), ntotal);
@@ -193,13 +193,13 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
         it = slabs_alloc(ntotal, id);
 
     if (it == NULL) {
-        itemstats[0][id].outofmemory++;
+        itemstats[instance_id][id].outofmemory++;
         mutex_unlock(&cache_lock);
         return NULL;
     }
 
     assert(it->slabs_clsid == 0);
-    assert(it != heads[0][id]);
+    assert(it != heads[instance_id][id]);
 
     /* Item initialization can happen outside of the lock; the item's already
      * been removed from the slab LRU.
