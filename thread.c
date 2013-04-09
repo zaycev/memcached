@@ -587,8 +587,10 @@ enum delta_result_type add_delta(conn *c, const char *key,
     uint32_t hv;
 
     hv = hash(key, nkey, 0);
+    int instance_id=0;
+
     item_lock(hv);
-    ret = do_add_delta(c, key, nkey, incr, delta, buf, cas, hv);
+    ret = do_add_delta(c, key, nkey, incr, delta, buf, cas, hv, instance_id);
     item_unlock(hv);
     return ret;
 }
@@ -601,8 +603,9 @@ enum store_item_type store_item(item *item, int comm, conn* c) {
     uint32_t hv;
 
     hv = hash(ITEM_key(item), item->nkey, 0);
+    int instance_id=0;
     item_lock(hv);
-    ret = do_store_item(item, comm, c, hv);
+    ret = do_store_item(item, comm, c, hv, instance_id);
     item_unlock(hv);
     return ret;
 }

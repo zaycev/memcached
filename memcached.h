@@ -485,8 +485,8 @@ void do_accept_new_conns(const bool do_accept);
 enum delta_result_type do_add_delta(conn *c, const char *key,
                                     const size_t nkey, const bool incr,
                                     const int64_t delta, char *buf,
-                                    uint64_t *cas, const uint32_t hv);
-enum store_item_type do_store_item(item *item, int comm, conn* c, const uint32_t hv);
+                                    uint64_t *cas, const uint32_t hv, const int instance_id);
+enum store_item_type do_store_item(item *item, int comm, conn* c, const uint32_t hv, const int instance_id);
 conn *conn_new(const int sfd, const enum conn_states init_state, const int event_flags, const int read_buffer_size, enum network_transport transport, struct event_base *base);
 extern int daemonize(int nochdir, int noclose);
 
