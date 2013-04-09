@@ -2260,8 +2260,9 @@ static void complete_nread(conn *c) {
  * Returns the state of storage.
  */
 enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t hv) {
+    int instance_id=0;
     char *key = ITEM_key(it);
-    item *old_it = do_item_get(key, it->nkey, hv);
+    item *old_it = do_item_get(key, it->nkey, hv, instance_id);
     enum store_item_type stored = NOT_STORED;
 
     item *new_it = NULL;
@@ -3059,8 +3060,9 @@ enum delta_result_type do_add_delta(conn *c, const char *key, const size_t nkey,
     uint64_t value;
     int res;
     item *it;
+    int instance_id=0;
 
-    it = do_item_get(key, nkey, hv);
+    it = do_item_get(key, nkey, hv, instance_id);
     if (!it) {
         return DELTA_ITEM_NOT_FOUND;
     }

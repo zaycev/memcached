@@ -497,8 +497,9 @@ item *item_get(const char *key, const size_t nkey) {
     item *it;
     uint32_t hv;
     hv = hash(key, nkey, 0);
+    int instance_id=0;
     item_lock(hv);
-    it = do_item_get(key, nkey, hv);
+    it = do_item_get(key, nkey, hv, instance_id);
     item_unlock(hv);
     return it;
 }
