@@ -133,7 +133,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
             if (search->time + TAIL_REPAIR_TIME < current_time) {
                 itemstats[instance_id][id].tailrepairs++;
                 search->refcount = 1;
-                do_item_unlink_nolock(search, hv);
+                do_item_unlink_nolock(search, hv, instance_id);
             }
             if (hold_lock)
                 item_trylock_unlock(hold_lock);
@@ -149,7 +149,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
             }
             it = search;
             slabs_adjust_mem_requested(it->slabs_clsid, ITEM_ntotal(it), ntotal);
-            do_item_unlink_nolock(it, hv);
+            do_item_unlink_nolock(it, hv, instance_id);
             /* Initialize the item block: */
             it->slabs_clsid = 0;
         } else if ((it = slabs_alloc(ntotal, id)) == NULL) {
@@ -166,7 +166,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
                 }
                 it = search;
                 slabs_adjust_mem_requested(it->slabs_clsid, ITEM_ntotal(it), ntotal);
-                do_item_unlink_nolock(it, hv);
+                do_item_unlink_nolock(it, hv, instance_id);
                 /* Initialize the item block: */
                 it->slabs_clsid = 0;
 
@@ -336,8 +336,7 @@ void do_item_unlink(item *it, const uint32_t hv, const int instance_id) {
 }
 
 /* FIXME: Is it necessary to keep this copy/pasted code? */
-void do_item_unlink_nolock(item *it, const uint32_t hv) {
-    int instance_id=0;
+void do_item_unlink_nolock(item *it, const uint32_t hv, const int instance_id) {
     MEMCACHED_ITEM_UNLINK(ITEM_key(it), it->nkey, it->nbytes);
     if ((it->it_flags & ITEM_LINKED) != 0) {
         it->it_flags &= ~ITEM_LINKED;
@@ -548,7 +547,7 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv) {
          * of item_lock, cache_lock, slabs_lock. */
         if (slab_rebalance_signal &&
             ((void *)it >= slab_rebal.slab_start && (void *)it < slab_rebal.slab_end)) {
-            do_item_unlink_nolock(it, hv);
+            do_item_unlink_nolock(it, hv, instance_id);
             do_item_remove(it);
             it = NULL;
         }
@@ -619,7 +618,7 @@ void do_item_flush_expired(void) {
                 if (iter->time >= settings.oldest_live) {
                     next = iter->next;
                     if ((iter->it_flags & ITEM_SLABBED) == 0) {
-                        do_item_unlink_nolock(iter, hash(ITEM_key(iter), iter->nkey, 0));
+                        do_item_unlink_nolock(iter, hash(ITEM_key(iter), iter->nkey, 0), instance_id);
                     }
                 } else {
                     /* We've hit the first old item. Continue to the next queue. */
