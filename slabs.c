@@ -320,7 +320,7 @@ bool get_stats(const char *stat_type, int nkey, ADD_STAT add_stats, void *c) {
 
 /*@null@*/
 static void do_slabs_stats(ADD_STAT add_stats, void *c) {
-    int i, total;
+    int i, total, instance_id;
     /* Get the per-thread stats which contain some interesting aggregates */
     struct thread_stats thread_stats;
     threadlocal_stats_aggregate(&thread_stats);
@@ -342,32 +342,38 @@ static void do_slabs_stats(ADD_STAT add_stats, void *c) {
         unsigned long long   total_cas_hits = 0;
         unsigned long long   total_cas_badval = 0;
         unsigned long long   total_touch_hits = 0;
-        slabclass_t *p = &slabclass[0][i];
-        if (p->slabs != 0) {
-            uint32_t perslab, slabs;
-            slabs = p->slabs;
-            perslab = p->perslab;
+        int found = 0;
+        for(instance_id = 0; instance_id < settings.num_instances; instance_id++) {
+            slabclass_t *p = &slabclass[instance_id][i];
+            if (p->slabs != 0) {
+                found = 1;
+                uint32_t perslab, slabs;
+                slabs = p->slabs;
+                perslab = p->perslab;
+
+                total_p_size += p->size;
+                total_perslab += perslab;
+                total_slabs += slabs;
+                total_chunks += slabs * perslab;
+                total_used_chunks += slabs*perslab - p->sl_curr;
+                total_free_chunks += p->sl_curr;
+                total_p_requested += p->requested;
+                total_get_hits += thread_stats.slab_stats[i].get_hits;
+                total_cmd_set += thread_stats.slab_stats[i].set_cmds;
+                total_delete_hits += thread_stats.slab_stats[i].delete_hits;
+                total_incr_hits += thread_stats.slab_stats[i].incr_hits;
+                total_decr_hits += thread_stats.slab_stats[i].decr_hits;
+                total_cas_hits += thread_stats.slab_stats[i].cas_hits;
+                total_cas_badval += thread_stats.slab_stats[i].cas_badval;
+                total_touch_hits += thread_stats.slab_stats[i].touch_hits;
+            }
+        }
+
+        if(found == 1){
 
             char key_str[STAT_KEY_LEN];
             char val_str[STAT_VAL_LEN];
             int klen = 0, vlen = 0;
-
-            total_p_size += p->size;
-            total_perslab += perslab;
-            total_slabs += slabs;
-            total_chunks += slabs * perslab;
-            total_used_chunks += slabs*perslab - p->sl_curr;
-            total_free_chunks += p->sl_curr;
-            total_p_requested += p->requested;
-            total_get_hits += thread_stats.slab_stats[i].get_hits;
-            total_cmd_set += thread_stats.slab_stats[i].set_cmds;
-            total_delete_hits += thread_stats.slab_stats[i].delete_hits;
-            total_incr_hits += thread_stats.slab_stats[i].incr_hits;
-            total_decr_hits += thread_stats.slab_stats[i].decr_hits;
-            total_cas_hits += thread_stats.slab_stats[i].cas_hits;
-            total_cas_badval += thread_stats.slab_stats[i].cas_badval;
-            total_touch_hits += thread_stats.slab_stats[i].touch_hits;
-            total++;
 
             APPEND_NUM_STAT(i, "chunk_size", "%u", total_p_size);
             APPEND_NUM_STAT(i, "chunks_per_page", "%u", total_perslab);
@@ -396,6 +402,7 @@ static void do_slabs_stats(ADD_STAT add_stats, void *c) {
                     (unsigned long long)total_cas_badval);
             APPEND_NUM_STAT(i, "touch_hits", "%llu",
                     (unsigned long long)total_touch_hits);
+            total++;
         }
     }
 
