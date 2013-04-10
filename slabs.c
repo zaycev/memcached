@@ -327,6 +327,21 @@ static void do_slabs_stats(ADD_STAT add_stats, void *c) {
 
     total = 0;
     for(i = POWER_SMALLEST; i <= power_largest; i++) {
+        unsigned   total_p_size = 0;
+        unsigned   total_perslab = 0;
+        unsigned   total_slabs = 0;
+        unsigned   total_chunks = 0;
+        unsigned   total_used_chunks = 0;
+        unsigned   total_free_chunks = 0;
+        unsigned long   total_p_requested = 0;
+        unsigned long long   total_get_hits = 0;
+        unsigned long long   total_cmd_set = 0;
+        unsigned long long   total_delete_hits = 0;
+        unsigned long long   total_incr_hits = 0;
+        unsigned long long   total_decr_hits = 0;
+        unsigned long long   total_cas_hits = 0;
+        unsigned long long   total_cas_badval = 0;
+        unsigned long long   total_touch_hits = 0;
         slabclass_t *p = &slabclass[0][i];
         if (p->slabs != 0) {
             uint32_t perslab, slabs;
@@ -337,34 +352,50 @@ static void do_slabs_stats(ADD_STAT add_stats, void *c) {
             char val_str[STAT_VAL_LEN];
             int klen = 0, vlen = 0;
 
-            APPEND_NUM_STAT(i, "chunk_size", "%u", p->size);
-            APPEND_NUM_STAT(i, "chunks_per_page", "%u", perslab);
-            APPEND_NUM_STAT(i, "total_pages", "%u", slabs);
-            APPEND_NUM_STAT(i, "total_chunks", "%u", slabs * perslab);
+            total_p_size += p->size;
+            total_perslab += perslab;
+            total_slabs += slabs;
+            total_chunks += slabs * perslab;
+            total_used_chunks += slabs*perslab - p->sl_curr;
+            total_free_chunks += p->sl_curr;
+            total_p_requested += p->requested;
+            total_get_hits += thread_stats.slab_stats[i].get_hits;
+            total_cmd_set += thread_stats.slab_stats[i].set_cmds;
+            total_delete_hits += thread_stats.slab_stats[i].delete_hits;
+            total_incr_hits += thread_stats.slab_stats[i].incr_hits;
+            total_decr_hits += thread_stats.slab_stats[i].decr_hits;
+            total_cas_hits += thread_stats.slab_stats[i].cas_hits;
+            total_cas_badval += thread_stats.slab_stats[i].cas_badval;
+            total_touch_hits += thread_stats.slab_stats[i].touch_hits;
+            total++;
+
+            APPEND_NUM_STAT(i, "chunk_size", "%u", total_p_size);
+            APPEND_NUM_STAT(i, "chunks_per_page", "%u", total_perslab);
+            APPEND_NUM_STAT(i, "total_pages", "%u", total_slabs);
+            APPEND_NUM_STAT(i, "total_chunks", "%u", total_chunks);
             APPEND_NUM_STAT(i, "used_chunks", "%u",
-                            slabs*perslab - p->sl_curr);
-            APPEND_NUM_STAT(i, "free_chunks", "%u", p->sl_curr);
+                            total_used_chunks);
+            APPEND_NUM_STAT(i, "free_chunks", "%u", total_free_chunks);
             /* Stat is dead, but displaying zero instead of removing it. */
             APPEND_NUM_STAT(i, "free_chunks_end", "%u", 0);
             APPEND_NUM_STAT(i, "mem_requested", "%llu",
-                            (unsigned long long)p->requested);
+                            (unsigned long long)total_p_requested);
             APPEND_NUM_STAT(i, "get_hits", "%llu",
-                    (unsigned long long)thread_stats.slab_stats[i].get_hits);
+                    (unsigned long long)total_get_hits);
             APPEND_NUM_STAT(i, "cmd_set", "%llu",
-                    (unsigned long long)thread_stats.slab_stats[i].set_cmds);
+                    (unsigned long long)total_cmd_set);
             APPEND_NUM_STAT(i, "delete_hits", "%llu",
-                    (unsigned long long)thread_stats.slab_stats[i].delete_hits);
+                    (unsigned long long)total_delete_hits);
             APPEND_NUM_STAT(i, "incr_hits", "%llu",
-                    (unsigned long long)thread_stats.slab_stats[i].incr_hits);
+                    (unsigned long long)total_incr_hits);
             APPEND_NUM_STAT(i, "decr_hits", "%llu",
-                    (unsigned long long)thread_stats.slab_stats[i].decr_hits);
+                    (unsigned long long)total_decr_hits);
             APPEND_NUM_STAT(i, "cas_hits", "%llu",
-                    (unsigned long long)thread_stats.slab_stats[i].cas_hits);
+                    (unsigned long long)total_cas_hits);
             APPEND_NUM_STAT(i, "cas_badval", "%llu",
-                    (unsigned long long)thread_stats.slab_stats[i].cas_badval);
+                    (unsigned long long)total_cas_badval);
             APPEND_NUM_STAT(i, "touch_hits", "%llu",
-                    (unsigned long long)thread_stats.slab_stats[i].touch_hits);
-            total++;
+                    (unsigned long long)total_touch_hits);
         }
     }
 
