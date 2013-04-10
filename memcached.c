@@ -1088,8 +1088,9 @@ static void complete_incr_bin(conn *c) {
         if (req->message.body.expiration != 0xffffffff) {
             /* Save some room for the response */
             rsp->message.body.value = htonll(req->message.body.initial);
+            int instance_id=0;
             it = item_alloc(key, nkey, 0, realtime(req->message.body.expiration),
-                            INCR_MAX_STORAGE_LEN,0+0);
+                            INCR_MAX_STORAGE_LEN,instance_id);
 
             if (it != NULL) {
                 snprintf(ITEM_data(it), INCR_MAX_STORAGE_LEN, "%llu",
@@ -1671,7 +1672,8 @@ static void process_bin_sasl_auth(conn *c) {
     char *key = binary_get_key(c);
     assert(key);
 
-    item *it = item_alloc(key, nkey, 0, 0, vlen, 0+0);
+    int instance_id=0;
+    item *it = item_alloc(key, nkey, 0, 0, vlen, instance_id);
 
     if (it == 0) {
         write_bin_error(c, PROTOCOL_BINARY_RESPONSE_ENOMEM, vlen);
@@ -2013,11 +2015,12 @@ static void process_bin_update(conn *c) {
         stats_prefix_record_set(key, nkey);
     }
 
+    int instance_id=0;
     it = item_alloc(key, nkey, req->message.body.flags,
-            realtime(req->message.body.expiration), vlen+2, 0+0);
+            realtime(req->message.body.expiration), vlen+2, instance_id);
 
     if (it == 0) {
-        if (! item_size_ok(nkey, req->message.body.flags, vlen + 2)) {
+        if (!item_size_ok(nkey, req->message.body.flags, vlen + 2, instance_id)) {
             write_bin_error(c, PROTOCOL_BINARY_RESPONSE_E2BIG, vlen);
         } else {
             write_bin_error(c, PROTOCOL_BINARY_RESPONSE_ENOMEM, vlen);
@@ -2085,10 +2088,11 @@ static void process_bin_append_prepend(conn *c) {
         stats_prefix_record_set(key, nkey);
     }
 
-    it = item_alloc(key, nkey, 0, 0, vlen+2, 0+0);
+    int instance_id=0;
+    it = item_alloc(key, nkey, 0, 0, vlen+2, instance_id);
 
     if (it == 0) {
-        if (! item_size_ok(nkey, 0, vlen + 2)) {
+        if (! item_size_ok(nkey, 0, vlen + 2, instance_id)) {
             write_bin_error(c, PROTOCOL_BINARY_RESPONSE_E2BIG, vlen);
         } else {
             write_bin_error(c, PROTOCOL_BINARY_RESPONSE_ENOMEM, vlen);
@@ -2327,7 +2331,7 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
 
                 flags = (int) strtol(ITEM_suffix(old_it), (char **) NULL, 10);
 
-                new_it = do_item_alloc(key, it->nkey, flags, old_it->exptime, it->nbytes + old_it->nbytes - 2 /* CRLF */, hv, 0+0);
+                new_it = do_item_alloc(key, it->nkey, flags, old_it->exptime, it->nbytes + old_it->nbytes - 2 /* CRLF */, hv, instance_id);
 
                 if (new_it == NULL) {
                     /* SERVER_ERROR out of memory */
@@ -2356,7 +2360,7 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
             if (old_it != NULL)
                 item_replace(old_it, it, hv, instance_id);
             else
-                do_item_link(it, hv, 0+0);
+                do_item_link(it, hv, instance_id);
 
             c->cas = ITEM_get_cas(it);
 
@@ -2916,10 +2920,11 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
         stats_prefix_record_set(key, nkey);
     }
 
-    it = item_alloc(key, nkey, flags, realtime(exptime), vlen, 0+0);
+    int instance_id=0;
+    it = item_alloc(key, nkey, flags, realtime(exptime), vlen, instance_id);
 
     if (it == 0) {
-        if (! item_size_ok(nkey, flags, vlen))
+        if (! item_size_ok(nkey, flags, vlen, instance_id))
             out_string(c, "SERVER_ERROR object too large for cache");
         else
             out_string(c, "SERVER_ERROR out of memory storing object");
@@ -3101,7 +3106,7 @@ enum delta_result_type do_add_delta(conn *c, const char *key, const size_t nkey,
     res = strlen(buf);
     if (res + 2 > it->nbytes || it->refcount != 1) { /* need to realloc */
         item *new_it;
-        new_it = do_item_alloc(ITEM_key(it), it->nkey, atoi(ITEM_suffix(it) + 1), it->exptime, res + 2, hv, 0+0);
+        new_it = do_item_alloc(ITEM_key(it), it->nkey, atoi(ITEM_suffix(it) + 1), it->exptime, res + 2, hv, instance_id);
         if (new_it == 0) {
             do_item_remove(it);
             return EOM;

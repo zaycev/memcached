@@ -242,10 +242,9 @@ void item_free(item *it) {
  * Returns true if an item will fit in the cache (its size does not exceed
  * the maximum for a cache entry.)
  */
-bool item_size_ok(const size_t nkey, const int flags, const int nbytes) {
+bool item_size_ok(const size_t nkey, const int flags, const int nbytes, const int instance_id) {
     char prefix[40];
     uint8_t nsuffix;
-    int instance_id=0;
 
     size_t ntotal = item_make_header(nkey + 1, flags, nbytes,
                                      prefix, &nsuffix);

@@ -126,8 +126,7 @@ static item** _hashitem_before (const char *key, const size_t nkey, const uint32
 }
 
 /* grows the hashtable to the next power of 2. */
-static void assoc_expand(void) {
-    int instance_id=0;
+static void assoc_expand(const int instance_id) {
     old_hashtable = primary_hashtable[instance_id];
 
     primary_hashtable[instance_id] = calloc(hashsize(hashpower + 1), sizeof(void *));
@@ -259,7 +258,7 @@ static void *assoc_maintenance_thread(void *arg) {
             slabs_rebalancer_pause();
             switch_item_lock_type(ITEM_LOCK_GLOBAL);
             mutex_lock(&cache_lock);
-            assoc_expand();
+            assoc_expand(instance_id);
             mutex_unlock(&cache_lock);
         }
     }
