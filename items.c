@@ -223,13 +223,11 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
 void item_free(item *it) {
     size_t ntotal = ITEM_ntotal(it);
     unsigned int clsid;
-    int instance_id = 0;
+    int instance_id = get_instance_id(ITEM_key(it), it->nkey, 0, settings.num_instances);
     assert((it->it_flags & ITEM_LINKED) == 0);
     assert(it != heads[instance_id][it->slabs_clsid]);
     assert(it != tails[instance_id][it->slabs_clsid]);
     assert(it->refcount == 0);
-
-    instance_id=0;// unnecessary line is to remove warning
 
     /* so slab size changer can tell later if item is already free or not */
     clsid = it->slabs_clsid;
