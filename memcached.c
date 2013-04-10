@@ -2291,7 +2291,7 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
             c->thread->stats.slab_stats[old_it->slabs_clsid].cas_hits++;
             pthread_mutex_unlock(&c->thread->stats.mutex);
 
-            item_replace(old_it, it, hv);
+            item_replace(old_it, it, hv, instance_id);
             stored = STORED;
         } else {
             pthread_mutex_lock(&c->thread->stats.mutex);
@@ -2354,7 +2354,7 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
 
         if (stored == NOT_STORED) {
             if (old_it != NULL)
-                item_replace(old_it, it, hv);
+                item_replace(old_it, it, hv, instance_id);
             else
                 do_item_link(it, hv, 0+0);
 
@@ -3108,7 +3108,7 @@ enum delta_result_type do_add_delta(conn *c, const char *key, const size_t nkey,
         }
         memcpy(ITEM_data(new_it), buf, res);
         memcpy(ITEM_data(new_it) + res, "\r\n", 2);
-        item_replace(it, new_it, hv);
+        item_replace(it, new_it, hv, instance_id);
         // Overwrite the older item's CAS with our new CAS since we're
         // returning the CAS of the old item below.
         ITEM_set_cas(it, (settings.use_cas) ? ITEM_get_cas(new_it) : 0);

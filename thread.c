@@ -520,12 +520,13 @@ item *item_touch(const char *key, size_t nkey, uint32_t exptime) {
  * Links an item into the LRU and hashtable.
  */
 int item_link(item *item) {
-    int ret;
+    int ret,instance_id;
     uint32_t hv;
 
     hv = hash(ITEM_key(item), item->nkey, 0);
+    instance_id = 0;
     item_lock(hv);
-    ret = do_item_link(item, hv, 0+0);
+    ret = do_item_link(item, hv, instance_id);
     item_unlock(hv);
     return ret;
 }
@@ -548,8 +549,7 @@ void item_remove(item *item) {
  * Unprotected by a mutex lock since the core server does not require
  * it to be thread-safe.
  */
-int item_replace(item *old_it, item *new_it, const uint32_t hv) {
-    int instance_id=0;
+int item_replace(item *old_it, item *new_it, const uint32_t hv, const int instance_id) {
     return do_item_replace(old_it, new_it, hv, instance_id);
 }
 
@@ -559,8 +559,9 @@ int item_replace(item *old_it, item *new_it, const uint32_t hv) {
 void item_unlink(item *item) {
     uint32_t hv;
     hv = hash(ITEM_key(item), item->nkey, 0);
+    int instance_id=0;
     item_lock(hv);
-    do_item_unlink(item, hv, 0+0);
+    do_item_unlink(item, hv, instance_id);
     item_unlock(hv);
 }
 
