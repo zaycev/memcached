@@ -57,7 +57,7 @@ static pthread_mutex_t slabs_rebalance_lock = PTHREAD_MUTEX_INITIALIZER;
 /*
  * Forward Declarations
  */
-static int do_slabs_newslab(const unsigned int id);
+static int do_slabs_newslab(const unsigned int id, const int instance_id);
 static void *memory_allocate(size_t size);
 static void do_slabs_free(void *ptr, const size_t size, unsigned int id, const int instance_id);
 
@@ -67,7 +67,7 @@ static void do_slabs_free(void *ptr, const size_t size, unsigned int id, const i
    if maxslabs is 18 (POWER_LARGEST - POWER_SMALLEST + 1), then all
    slab types can be made.  if max memory is less than 18 MB, only the
    smaller ones will be made.  */
-static void slabs_preallocate (const unsigned int maxslabs);
+static void slabs_preallocate(const unsigned int maxslabs, const int instance_id);
 
 /*
  * Figures out which slab class (chunk size) is required to store an item of
@@ -149,12 +149,12 @@ void slabs_init(const size_t limit, const double factor, const bool prealloc, co
     }
 
     if (prealloc) {
-        slabs_preallocate(power_largest);
+        slabs_preallocate(power_largest, num_instances);
     }
 }
 
-static void slabs_preallocate (const unsigned int maxslabs) {
-    int i;
+static void slabs_preallocate (const unsigned int maxslabs, const int num_instances) {
+    int i, instance_id;
     unsigned int prealloc = 0;
 
     /* pre-allocate a 1MB slab in every size class so people don't get
@@ -166,11 +166,13 @@ static void slabs_preallocate (const unsigned int maxslabs) {
     for (i = POWER_SMALLEST; i <= POWER_LARGEST; i++) {
         if (++prealloc > maxslabs)
             return;
-        if (do_slabs_newslab(i) == 0) {
-            fprintf(stderr, "Error while preallocating slab memory!\n"
-                "If using -L or other prealloc options, max memory must be "
-                "at least %d megabytes.\n", power_largest);
-            exit(1);
+        for (instance_id = 0; instance_id <= num_instances; instance_id++) {
+            if (do_slabs_newslab(i, instance_id) == 0) {
+                fprintf(stderr, "Error while preallocating slab memory!\n"
+                    "If using -L or other prealloc options, max memory must be "
+                    "at least %d megabytes.\n", power_largest);
+                exit(1);
+            }
         }
     }
 
@@ -197,8 +199,7 @@ static void split_slab_page_into_freelist(char *ptr, const unsigned int id, cons
     }
 }
 
-static int do_slabs_newslab(const unsigned int id) {
-    int instance_id=0;
+static int do_slabs_newslab(const unsigned int id, const int instance_id) {
     slabclass_t *p = &slabclass[instance_id][id];
     int len = settings.slab_reassign ? settings.item_size_max
         : p->size * p->perslab;
@@ -238,7 +239,7 @@ static void *do_slabs_alloc(const size_t size, unsigned int id, const int instan
 
     /* fail unless we have space at the end of a recently allocated page,
        we have something on our freelist, or we could allocate a new page */
-    if (! (p->sl_curr != 0 || do_slabs_newslab(id) != 0)) {
+    if (! (p->sl_curr != 0 || do_slabs_newslab(id, instance_id) != 0)) {
         /* We don't have more memory available */
         ret = NULL;
     } else if (p->sl_curr != 0) {
