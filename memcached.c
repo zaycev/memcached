@@ -1089,7 +1089,7 @@ static void complete_incr_bin(conn *c) {
             /* Save some room for the response */
             rsp->message.body.value = htonll(req->message.body.initial);
             it = item_alloc(key, nkey, 0, realtime(req->message.body.expiration),
-                            INCR_MAX_STORAGE_LEN);
+                            INCR_MAX_STORAGE_LEN,0+0);
 
             if (it != NULL) {
                 snprintf(ITEM_data(it), INCR_MAX_STORAGE_LEN, "%llu",
@@ -1671,7 +1671,7 @@ static void process_bin_sasl_auth(conn *c) {
     char *key = binary_get_key(c);
     assert(key);
 
-    item *it = item_alloc(key, nkey, 0, 0, vlen);
+    item *it = item_alloc(key, nkey, 0, 0, vlen, 0+0);
 
     if (it == 0) {
         write_bin_error(c, PROTOCOL_BINARY_RESPONSE_ENOMEM, vlen);
@@ -2014,7 +2014,7 @@ static void process_bin_update(conn *c) {
     }
 
     it = item_alloc(key, nkey, req->message.body.flags,
-            realtime(req->message.body.expiration), vlen+2);
+            realtime(req->message.body.expiration), vlen+2, 0+0);
 
     if (it == 0) {
         if (! item_size_ok(nkey, req->message.body.flags, vlen + 2)) {
@@ -2085,7 +2085,7 @@ static void process_bin_append_prepend(conn *c) {
         stats_prefix_record_set(key, nkey);
     }
 
-    it = item_alloc(key, nkey, 0, 0, vlen+2);
+    it = item_alloc(key, nkey, 0, 0, vlen+2, 0+0);
 
     if (it == 0) {
         if (! item_size_ok(nkey, 0, vlen + 2)) {
@@ -2916,7 +2916,7 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
         stats_prefix_record_set(key, nkey);
     }
 
-    it = item_alloc(key, nkey, flags, realtime(exptime), vlen);
+    it = item_alloc(key, nkey, flags, realtime(exptime), vlen, 0+0);
 
     if (it == 0) {
         if (! item_size_ok(nkey, flags, vlen))

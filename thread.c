@@ -482,10 +482,10 @@ int is_listen_thread() {
 /*
  * Allocates a new item.
  */
-item *item_alloc(char *key, size_t nkey, int flags, rel_time_t exptime, int nbytes) {
+item *item_alloc(char *key, size_t nkey, int flags, rel_time_t exptime, int nbytes, const int instance_id) {
     item *it;
     /* do_item_alloc handles its own locks */
-    it = do_item_alloc(key, nkey, flags, exptime, nbytes, 0, 0+0);
+    it = do_item_alloc(key, nkey, flags, exptime, nbytes, 0, instance_id);
     return it;
 }
 
