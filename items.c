@@ -148,7 +148,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
                 itemstats[instance_id][id].expired_unfetched++;
             }
             it = search;
-            slabs_adjust_mem_requested(it->slabs_clsid, ITEM_ntotal(it), ntotal);
+            slabs_adjust_mem_requested(it->slabs_clsid, ITEM_ntotal(it), ntotal, instance_id);
             do_item_unlink_nolock(it, hv, instance_id);
             /* Initialize the item block: */
             it->slabs_clsid = 0;
@@ -165,7 +165,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
                     itemstats[instance_id][id].evicted_unfetched++;
                 }
                 it = search;
-                slabs_adjust_mem_requested(it->slabs_clsid, ITEM_ntotal(it), ntotal);
+                slabs_adjust_mem_requested(it->slabs_clsid, ITEM_ntotal(it), ntotal, instance_id);
                 do_item_unlink_nolock(it, hv, instance_id);
                 /* Initialize the item block: */
                 it->slabs_clsid = 0;

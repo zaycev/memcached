@@ -25,7 +25,7 @@ void *slabs_alloc(const size_t size, unsigned int id, const int instance_id);
 void slabs_free(void *ptr, size_t size, unsigned int id, const int instance_id);
 
 /** Adjust the stats for memory requested */
-void slabs_adjust_mem_requested(unsigned int id, size_t old, size_t ntotal);
+void slabs_adjust_mem_requested(unsigned int id, size_t old, size_t ntotal, const int instance_id);
 
 /** Return a datum for stats in binary protocol */
 bool get_stats(const char *stat_type, int nkey, ADD_STAT add_stats, void *c);

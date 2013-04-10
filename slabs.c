@@ -425,7 +425,7 @@ void slabs_stats(ADD_STAT add_stats, void *c) {
     pthread_mutex_unlock(&slabs_lock);
 }
 
-void slabs_adjust_mem_requested(unsigned int id, size_t old, size_t ntotal)
+void slabs_adjust_mem_requested(unsigned int id, size_t old, size_t ntotal, const int instance_id)
 {
     pthread_mutex_lock(&slabs_lock);
     slabclass_t *p;
@@ -434,7 +434,7 @@ void slabs_adjust_mem_requested(unsigned int id, size_t old, size_t ntotal)
         abort();
     }
 
-    p = &slabclass[0][id];
+    p = &slabclass[instance_id][id];
     p->requested = p->requested - old + ntotal;
     pthread_mutex_unlock(&slabs_lock);
 }
