@@ -1088,7 +1088,7 @@ static void complete_incr_bin(conn *c) {
         if (req->message.body.expiration != 0xffffffff) {
             /* Save some room for the response */
             rsp->message.body.value = htonll(req->message.body.initial);
-            int instance_id=0;
+            int instance_id=get_instance_id(key, nkey, 0, settings.num_instances);
             it = item_alloc(key, nkey, 0, realtime(req->message.body.expiration),
                             INCR_MAX_STORAGE_LEN,instance_id);
 
@@ -1672,7 +1672,7 @@ static void process_bin_sasl_auth(conn *c) {
     char *key = binary_get_key(c);
     assert(key);
 
-    int instance_id=0;
+    int instance_id=get_instance_id(key, nkey, 0, settings.num_instances);
     item *it = item_alloc(key, nkey, 0, 0, vlen, instance_id);
 
     if (it == 0) {
@@ -2015,7 +2015,7 @@ static void process_bin_update(conn *c) {
         stats_prefix_record_set(key, nkey);
     }
 
-    int instance_id=0;
+    int instance_id=get_instance_id(key, nkey, 0, settings.num_instances);
     it = item_alloc(key, nkey, req->message.body.flags,
             realtime(req->message.body.expiration), vlen+2, instance_id);
 
@@ -2088,7 +2088,7 @@ static void process_bin_append_prepend(conn *c) {
         stats_prefix_record_set(key, nkey);
     }
 
-    int instance_id=0;
+    int instance_id=get_instance_id(key, nkey, 0, settings.num_instances);
     it = item_alloc(key, nkey, 0, 0, vlen+2, instance_id);
 
     if (it == 0) {
@@ -2920,7 +2920,7 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
         stats_prefix_record_set(key, nkey);
     }
 
-    int instance_id=0;
+    int instance_id=get_instance_id(key, nkey, 0, settings.num_instances);
     it = item_alloc(key, nkey, flags, realtime(exptime), vlen, instance_id);
 
     if (it == 0) {

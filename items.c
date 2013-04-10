@@ -360,7 +360,7 @@ void do_item_remove(item *it) {
 }
 
 void do_item_update(item *it) {
-    int instance_id=0;
+    int instance_id=get_instance_id(ITEM_key(it), it->nkey, 0,  settings.num_instances);
     MEMCACHED_ITEM_UPDATE(ITEM_key(it), it->nkey, it->nbytes);
     if (it->time < current_time - ITEM_UPDATE_INTERVAL) {
         assert((it->it_flags & ITEM_SLABBED) == 0);
