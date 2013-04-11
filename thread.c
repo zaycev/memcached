@@ -521,7 +521,7 @@ int item_link(item *item) {
     int ret,instance_id;
     uint32_t hv;
     hv = hash(ITEM_key(item), item->nkey, 0);
-    instance_id = 0;
+    instance_id = get_instance_id(ITEM_key(item), item->nkey, 0, settings.num_instances);
 
     item_lock(hv, instance_id);
     ret = do_item_link(item, hv, instance_id);
@@ -536,7 +536,7 @@ int item_link(item *item) {
 void item_remove(item *item) {
     uint32_t hv;
     hv = hash(ITEM_key(item), item->nkey, 0);
-	int instance_id = 0;
+	int instance_id = get_instance_id(ITEM_key(item), item->nkey, 0, settings.num_instances);
 
     item_lock(hv, instance_id);
     do_item_remove(item);
@@ -558,7 +558,7 @@ int item_replace(item *old_it, item *new_it, const uint32_t hv, const int instan
 void item_unlink(item *item) {
     uint32_t hv;
     hv = hash(ITEM_key(item), item->nkey, 0);
-    int instance_id=get_instance_id(ITEM_key(item), item->nkey, 0, settings.num_instances);
+    int instance_id = get_instance_id(ITEM_key(item), item->nkey, 0, settings.num_instances);
 
     item_lock(hv, instance_id);
     do_item_unlink(item, hv, instance_id);
@@ -571,7 +571,7 @@ void item_unlink(item *item) {
 void item_update(item *item) {
     uint32_t hv;
     hv = hash(ITEM_key(item), item->nkey, 0);
-	int instance_id = 0;
+	int instance_id = get_instance_id(ITEM_key(item), item->nkey, 0, settings.num_instances);
 
     item_lock(hv, instance_id);
     do_item_update(item);
