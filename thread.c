@@ -60,7 +60,6 @@ static uint32_t item_lock_count;
 #define hashsize(n) ((unsigned long int)1<<(n))
 #define hashmask(n) (hashsize(n)-1)
 /* this lock is temporarily engaged during a hash table expansion */
-static pthread_mutexattr_t item_global_lock_attr;
 static pthread_mutex_t item_global_lock;
 /* thread-specific variable for deeply finding the item lock type */
 static pthread_key_t item_lock_type_key;
@@ -114,12 +113,11 @@ unsigned short refcount_decr(unsigned short *refcount) {
 }
 
 /* Convenience functions for calling *only* when in ITEM_LOCK_GLOBAL mode */
-void item_lock_global(void) {
-    while(pthread_mutex_trylock(&item_global_lock) == 0){}
+void item_lock_global(int instance_id) {
     mutex_lock(&item_global_lock);
 }
 
-void item_unlock_global(void) {
+void item_unlock_global(int instance_id) {
     mutex_unlock(&item_global_lock);
 }
 
@@ -811,13 +809,12 @@ void thread_init(int nthreads, struct event_base *main_base) {
         perror("Can't allocate item locks");
         exit(1);
     }
-    for (i = 0; i < item_lock_count; i++) {
-        pthread_mutex_init(&item_locks[i], NULL);
-    }
+
+    pthread_mutex_init(&item_locks[i], NULL);
     pthread_key_create(&item_lock_type_key, NULL);
-    pthread_mutexattr_init(&item_global_lock_attr);
-    pthread_mutexattr_settype(&item_global_lock_attr, PTHREAD_MUTEX_ERRORCHECK);
-    pthread_mutex_init(&item_global_lock, &item_global_lock_attr);
+
+	for()
+    pthread_mutex_init(&item_global_lock, NULL);
 
     threads = calloc(nthreads, sizeof(LIBEVENT_THREAD));
     if (! threads) {

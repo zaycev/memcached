@@ -212,7 +212,7 @@ static void *assoc_maintenance_thread(void *arg) {
 
         /* Lock the cache, and bulk move multiple buckets to the new
          * hash table. */
-        item_lock_global();
+        item_lock_global(0);
         mutex_lock(&cache_lock);
 
         for (ii = 0; ii < hash_bulk_move && expanding; ++ii) {
@@ -243,7 +243,7 @@ static void *assoc_maintenance_thread(void *arg) {
         }
 
         mutex_unlock(&cache_lock);
-        item_unlock_global();
+        item_unlock_global(0);
 
         if (!expanding) {
             /* finished expanding. tell all threads to use fine-grained locks */
