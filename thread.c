@@ -60,7 +60,7 @@ static uint32_t item_lock_count;
 #define hashsize(n) ((unsigned long int)1<<(n))
 #define hashmask(n) (hashsize(n)-1)
 /* this lock is temporarily engaged during a hash table expansion */
-static pthread_mutex_t item_global_lock;
+static pthread_spinlock_t item_global_lock;
 /* thread-specific variable for deeply finding the item lock type */
 static pthread_key_t item_lock_type_key;
 
@@ -114,11 +114,11 @@ unsigned short refcount_decr(unsigned short *refcount) {
 
 /* Convenience functions for calling *only* when in ITEM_LOCK_GLOBAL mode */
 void item_lock_global(int instance_id) {
-    mutex_lock(&item_global_lock);
+    pthread_spin_lock(&item_global_lock);
 }
 
 void item_unlock_global(int instance_id) {
-    mutex_unlock(&item_global_lock);
+    pthread_spin_unlock(&item_global_lock);
 }
 
 void item_lock(uint32_t hv) {
@@ -126,7 +126,7 @@ void item_lock(uint32_t hv) {
     if (likely(*lock_type == ITEM_LOCK_GRANULAR)) {
         mutex_lock(&item_locks[(hv & hashmask(hashpower)) % item_lock_count]);
     } else {
-        mutex_lock(&item_global_lock);
+        pthread_spin_lock(&item_global_lock);
     }
 }
 
@@ -154,7 +154,7 @@ void item_unlock(uint32_t hv) {
     if (likely(*lock_type == ITEM_LOCK_GRANULAR)) {
         mutex_unlock(&item_locks[(hv & hashmask(hashpower)) % item_lock_count]);
     } else {
-        mutex_unlock(&item_global_lock);
+        pthread_spin_unlock(&item_global_lock);
     }
 }
 
@@ -810,11 +810,14 @@ void thread_init(int nthreads, struct event_base *main_base) {
         exit(1);
     }
 
-    pthread_mutex_init(&item_locks[i], NULL);
+    for (i = 0; i < item_lock_count; i++) {
+        pthread_mutex_init(&item_locks[i], NULL);
+    }
+
     pthread_key_create(&item_lock_type_key, NULL);
 
-	for()
-    pthread_mutex_init(&item_global_lock, NULL);
+
+    pthread_spin_init(&item_global_lock, PTHREAD_PROCESS_SHARED);
 
     threads = calloc(nthreads, sizeof(LIBEVENT_THREAD));
     if (! threads) {
