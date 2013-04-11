@@ -1090,7 +1090,7 @@ static void complete_incr_bin(conn *c) {
             rsp->message.body.value = htonll(req->message.body.initial);
             int instance_id=get_instance_id(key, nkey, 0, settings.num_instances);
             it = item_alloc(key, nkey, 0, realtime(req->message.body.expiration),
-                            INCR_MAX_STORAGE_LEN, -instance_id);
+                            INCR_MAX_STORAGE_LEN, instance_id);
 
             if (it != NULL) {
                 snprintf(ITEM_data(it), INCR_MAX_STORAGE_LEN, "%llu",
