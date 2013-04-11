@@ -121,7 +121,7 @@ void item_unlock_global(int instance_id) {
     pthread_spin_unlock(&item_global_lock);
 }
 
-void item_lock(uint32_t hv) {
+void item_lock(uint32_t hv, int instance_id) {
     uint8_t *lock_type = pthread_getspecific(item_lock_type_key);
     if (likely(*lock_type == ITEM_LOCK_GRANULAR)) {
         pthread_spin_lock(&item_locks[(hv & hashmask(hashpower)) % item_lock_count]);
@@ -137,7 +137,7 @@ void item_lock(uint32_t hv) {
  * turns into an effective no-op. Threads re-synchronize after the power level
  * switch so it should stay safe.
  */
-void *item_trylock(uint32_t hv) {
+void *item_trylock(uint32_t hv, int instance_id) {
     pthread_spinlock_t *lock = &item_locks[(hv & hashmask(hashpower)) % item_lock_count];
     if (pthread_spin_trylock(lock) == 0) {
         return (void *) lock;
@@ -145,11 +145,11 @@ void *item_trylock(uint32_t hv) {
     return NULL;
 }
 
-void item_trylock_unlock(void *lock) {
+void item_trylock_unlock(void *lock, int instance_id) {
     pthread_spin_unlock((pthread_spinlock_t *) lock);
 }
 
-void item_unlock(uint32_t hv) {
+void item_unlock(uint32_t hv, int instance_id) {
     uint8_t *lock_type = pthread_getspecific(item_lock_type_key);
     if (likely(*lock_type == ITEM_LOCK_GRANULAR)) {
         pthread_spin_unlock(&item_locks[(hv & hashmask(hashpower)) % item_lock_count]);
@@ -496,9 +496,9 @@ item *item_get(const char *key, const size_t nkey) {
     uint32_t hv;
     hv = hash(key, nkey, 0);
     int instance_id=get_instance_id(key, nkey, 0, settings.num_instances);
-    item_lock(hv);
+    item_lock(hv, instance_id);
     it = do_item_get(key, nkey, hv, instance_id);
-    item_unlock(hv);
+    item_unlock(hv, instance_id);
     return it;
 }
 
@@ -508,9 +508,9 @@ item *item_touch(const char *key, size_t nkey, uint32_t exptime) {
     hv = hash(key, nkey, 0);
     int instance_id=get_instance_id(key, nkey, 0, settings.num_instances);
 
-    item_lock(hv);
+    item_lock(hv, instance_id);
     it = do_item_touch(key, nkey, exptime, hv, instance_id);
-    item_unlock(hv);
+    item_unlock(hv, instance_id);
     return it;
 }
 
@@ -520,12 +520,12 @@ item *item_touch(const char *key, size_t nkey, uint32_t exptime) {
 int item_link(item *item) {
     int ret,instance_id;
     uint32_t hv;
-
     hv = hash(ITEM_key(item), item->nkey, 0);
     instance_id = 0;
-    item_lock(hv);
+
+    item_lock(hv, instance_id);
     ret = do_item_link(item, hv, instance_id);
-    item_unlock(hv);
+    item_unlock(hv, instance_id);
     return ret;
 }
 
@@ -536,10 +536,11 @@ int item_link(item *item) {
 void item_remove(item *item) {
     uint32_t hv;
     hv = hash(ITEM_key(item), item->nkey, 0);
+	int instance_id = 0;
 
-    item_lock(hv);
+    item_lock(hv, instance_id);
     do_item_remove(item);
-    item_unlock(hv);
+    item_unlock(hv, instance_id);
 }
 
 /*
@@ -558,9 +559,10 @@ void item_unlink(item *item) {
     uint32_t hv;
     hv = hash(ITEM_key(item), item->nkey, 0);
     int instance_id=get_instance_id(ITEM_key(item), item->nkey, 0, settings.num_instances);
-    item_lock(hv);
+
+    item_lock(hv, instance_id);
     do_item_unlink(item, hv, instance_id);
-    item_unlock(hv);
+    item_unlock(hv, instance_id);
 }
 
 /*
@@ -569,10 +571,11 @@ void item_unlink(item *item) {
 void item_update(item *item) {
     uint32_t hv;
     hv = hash(ITEM_key(item), item->nkey, 0);
+	int instance_id = 0;
 
-    item_lock(hv);
+    item_lock(hv, instance_id);
     do_item_update(item);
-    item_unlock(hv);
+    item_unlock(hv, instance_id);
 }
 
 /*
@@ -588,9 +591,9 @@ enum delta_result_type add_delta(conn *c, const char *key,
     hv = hash(key, nkey, 0);
     int instance_id=get_instance_id(key, nkey, 0, settings.num_instances);
 
-    item_lock(hv);
+    item_lock(hv, instance_id);
     ret = do_add_delta(c, key, nkey, incr, delta, buf, cas, hv, instance_id);
-    item_unlock(hv);
+    item_unlock(hv, instance_id);
     return ret;
 }
 
@@ -603,9 +606,9 @@ enum store_item_type store_item(item *item, int comm, conn* c) {
 
     hv = hash(ITEM_key(item), item->nkey, 0);
     int instance_id=get_instance_id(ITEM_key(item), item->nkey, 0, settings.num_instances);
-    item_lock(hv);
+    item_lock(hv, instance_id);
     ret = do_store_item(item, comm, c, hv, instance_id);
-    item_unlock(hv);
+    item_unlock(hv, instance_id);
     return ret;
 }
 

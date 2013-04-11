@@ -122,7 +122,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
          * other callers can incr the refcount
          */
         /* FIXME: I think we need to mask the hv here for comparison? */
-        if (hv != cur_hv && (hold_lock = item_trylock(hv)) == NULL)
+        if (hv != cur_hv && (hold_lock = item_trylock(hv, instance_id)) == NULL)
             continue;
         /* Now see if the item is refcount locked */
         if (refcount_incr(&search->refcount) != 2) {
@@ -136,7 +136,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
                 do_item_unlink_nolock(search, hv, instance_id);
             }
             if (hold_lock)
-                item_trylock_unlock(hold_lock);
+                item_trylock_unlock(hold_lock, instance_id);
             continue;
         }
 
@@ -185,7 +185,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
         refcount_decr(&search->refcount);
         /* If hash values were equal, we don't grab a second lock */
         if (hold_lock)
-            item_trylock_unlock(hold_lock);
+            item_trylock_unlock(hold_lock, instance_id);
         break;
     }
 

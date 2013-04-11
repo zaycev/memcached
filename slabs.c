@@ -568,7 +568,7 @@ static int slab_rebalance_move(void) {
             void *hold_lock = NULL;
             uint32_t hv = hash(ITEM_key(it), it->nkey, 0);
             int instance_id=0;
-            if ((hold_lock = item_trylock(hv)) == NULL) {
+            if ((hold_lock = item_trylock(hv, instance_id)) == NULL) {
                 status = MOVE_LOCKED;
             } else {
                 refcount = refcount_incr(&it->refcount);
@@ -602,7 +602,7 @@ static int slab_rebalance_move(void) {
                     }
                     status = MOVE_BUSY;
                 }
-                item_trylock_unlock(hold_lock);
+                item_trylock_unlock(hold_lock, instance_id);
             }
         }
 

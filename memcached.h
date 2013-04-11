@@ -542,10 +542,10 @@ void  item_update(item *it);
 
 void item_lock_global(int instance_id);
 void item_unlock_global(int instance_id);
-void item_lock(uint32_t hv);
-void *item_trylock(uint32_t hv);
-void item_trylock_unlock(void *arg);
-void item_unlock(uint32_t hv);
+void item_lock(uint32_t hv, int instance_id);
+void *item_trylock(uint32_t hv, int instance_id);
+void item_trylock_unlock(void *arg, int instance_id);
+void item_unlock(uint32_t hv, int instance_id);
 void switch_item_lock_type(enum item_lock_types type);
 unsigned short refcount_incr(unsigned short *refcount);
 unsigned short refcount_decr(unsigned short *refcount);
