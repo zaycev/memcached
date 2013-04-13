@@ -93,63 +93,67 @@ unsigned int slabs_clsid(const size_t size, const int instance_id) {
  * accordingly.
  */
 void slabs_init(const size_t limit, const double factor, const bool prealloc, const int num_instances) {
-    int i = POWER_SMALLEST - 1;
-    int j=0;
-    unsigned int size = sizeof(item) + settings.chunk_size;
+    int instance_id=0;
 
-    mem_limit = limit;
-
-    if (prealloc) {
-        /* Allocate everything in a big chunk with malloc */
-        mem_base = malloc(mem_limit);
-        if (mem_base != NULL) {
-            mem_current = mem_base;
-            mem_avail = mem_limit;
-        } else {
-            fprintf(stderr, "Warning: Failed to allocate requested memory in"
-                    " one large chunk.\nWill allocate in smaller chunks\n");
-        }
-    }
     slabclass = calloc(num_instances,sizeof(slabclass_t*));
-    for(j=0;j<num_instances;j++){
-        slabclass[j] = calloc(MAX_NUMBER_OF_SLAB_CLASSES,sizeof(slabclass_t));
+    for(instance_id=0;instance_id<num_instances;instance_id++){
+        slabclass[instance_id] = calloc(MAX_NUMBER_OF_SLAB_CLASSES,sizeof(slabclass_t));
+    }
 
-        memset(slabclass[j], 0, sizeof(slabclass[j]));
+    for(instance_id = 0; instance_id < num_instances; instance_id++){
+        int i = POWER_SMALLEST - 1;
+        unsigned int size = sizeof(item) + settings.chunk_size;
+
+        mem_limit = limit;
+
+        if (prealloc) {
+            /* Allocate everything in a big chunk with malloc */
+            mem_base = malloc(mem_limit);
+            if (mem_base != NULL) {
+                mem_current = mem_base;
+                mem_avail = mem_limit;
+            } else {
+                fprintf(stderr, "Warning: Failed to allocate requested memory in"
+                        " one large chunk.\nWill allocate in smaller chunks\n");
+            }
+        }
+
+        memset(slabclass[instance_id], 0, sizeof(slabclass[instance_id]));
 
         while (++i < POWER_LARGEST && size <= settings.item_size_max / factor) {
             /* Make sure items are always n-byte aligned */
             if (size % CHUNK_ALIGN_BYTES)
                 size += CHUNK_ALIGN_BYTES - (size % CHUNK_ALIGN_BYTES);
 
-            slabclass[j][i].size = size;
-            slabclass[j][i].perslab = settings.item_size_max / slabclass[j][i].size;
+            slabclass[instance_id][i].size = size;
+            slabclass[instance_id][i].perslab = settings.item_size_max / slabclass[instance_id][i].size;
             size *= factor;
             if (settings.verbose > 1) {
                 fprintf(stderr, "slab class %3d: chunk size %9u perslab %7u\n",
-                        i, slabclass[j][i].size, slabclass[j][i].perslab);
+                        i, slabclass[instance_id][i].size, slabclass[instance_id][i].perslab);
             }
         }
 
         power_largest = i;
-        slabclass[j][power_largest].size = settings.item_size_max;
-        slabclass[j][power_largest].perslab = 1;
+        slabclass[instance_id][power_largest].size = settings.item_size_max;
+        slabclass[instance_id][power_largest].perslab = 1;
         if (settings.verbose > 1) {
             fprintf(stderr, "slab class %3d: chunk size %9u perslab %7u\n",
-                    i, slabclass[j][i].size, slabclass[j][i].perslab);
-        }
-    }
-
-    /* for the test suite:  faking of how much we've already malloc'd */
-    {
-        char *t_initial_malloc = getenv("T_MEMD_INITIAL_MALLOC");
-        if (t_initial_malloc) {
-            mem_malloced = (size_t)atol(t_initial_malloc);
+                    i, slabclass[instance_id][i].size, slabclass[instance_id][i].perslab);
         }
 
-    }
+        /* for the test suite:  faking of how much we've already malloc'd */
+        {
+            char *t_initial_malloc = getenv("T_MEMD_INITIAL_MALLOC");
+            if (t_initial_malloc) {
+                mem_malloced = (size_t)atol(t_initial_malloc);
+            }
 
-    if (prealloc) {
-        slabs_preallocate(power_largest, num_instances);
+        }
+
+        if (prealloc) {
+            slabs_preallocate(power_largest, num_instances);
+        }
     }
 }
 
