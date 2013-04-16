@@ -4785,6 +4785,7 @@ int main (int argc, char **argv) {
           "f:"  /* factor? */
           "n:"  /* minimum space allocated for key+value+flags */
           "t:"  /* threads */
+          "T:"  /* memory manager instances */
           "D:"  /* prefix delimiter? */
           "L"   /* Large memory pages */
           "R:"  /* max requests per event */
