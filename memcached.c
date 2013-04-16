@@ -214,7 +214,7 @@ static void settings_init(void) {
     settings.factor = 1.25;
     settings.chunk_size = 48;         /* space for a modest key and value */
     settings.num_threads = 4;         /* N workers */
-    settings.num_instances = 100;         /* N memory managers */
+    settings.num_instances = 10;         /* N memory managers */
     settings.num_threads_per_udp = 0;
     settings.prefix_delimiter = ':';
     settings.detail_enabled = 0;

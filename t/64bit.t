@@ -9,7 +9,7 @@ use MemcachedTest;
 $ENV{T_MEMD_INITIAL_MALLOC} = "4294967328"; # 2**32 + 32 , just over 4GB
 $ENV{T_MEMD_SLABS_ALLOC}    = 0;  # don't preallocate slabs
 
-my $server = new_memcached("-m 4098 -M");
+my $server = new_memcached("-m 4098 -M -T 2");
 my $sock = $server->sock;
 
 my ($stats, $slabs) = @_;
