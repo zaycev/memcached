@@ -431,6 +431,6 @@ uint32_t hash( const void *key, size_t length, const uint32_t initval)
 #endif /* HASH_XXX_ENDIAN == 1 */
 
 uint32_t get_instance_id(const void *key, size_t length, const uint32_t initval, const uint32_t num_instances){
-//    return hash(key,length,initval)% num_instances;
-    return 0;
+    return hash(key,length,initval)% num_instances;
+//    return 0;
 }
