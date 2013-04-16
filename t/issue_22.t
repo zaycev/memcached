@@ -36,4 +36,4 @@ for ($key = 80; $key < 160; $key++) {
 
 my $last_stats  = mem_stats($sock, "items");
 my $last_evicted = $last_stats->{"items:31:evicted"};
-is ($last_evicted, "42", "check evicted");
+is ($last_evicted, "80", "check evicted");
