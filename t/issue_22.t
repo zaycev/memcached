@@ -1,17 +1,17 @@
 #!/usr/bin/perl
 
 use strict;
-use Test::More tests => 84;
+use Test::More tests => 164;
 use FindBin qw($Bin);
 use lib "$Bin/lib";
 use MemcachedTest;
 
-my $server = new_memcached("-m 3");
+my $server = new_memcached("-m 3 -T 2");
 my $sock = $server->sock;
 my $value = "B"x66560;
 my $key = 0;
 
-for ($key = 0; $key < 40; $key++) {
+for ($key = 0; $key < 80; $key++) {
     print $sock "set key$key 0 0 66560\r\n$value\r\n";
     is (scalar <$sock>, "STORED\r\n", "stored key$key");
 }
@@ -29,11 +29,11 @@ my $second_stats  = mem_stats($sock, "items");
 my $second_evicted = $second_stats->{"items:31:evicted"};
 is ($second_evicted, "0", "check evicted");
 
-for ($key = 40; $key < 80; $key++) {
+for ($key = 80; $key < 160; $key++) {
     print $sock "set key$key 0 0 66560\r\n$value\r\n";
     is (scalar <$sock>, "STORED\r\n", "stored key$key");
 }
 
 my $last_stats  = mem_stats($sock, "items");
 my $last_evicted = $last_stats->{"items:31:evicted"};
-is ($last_evicted, "40", "check evicted");
+is ($last_evicted, "42", "check evicted");
