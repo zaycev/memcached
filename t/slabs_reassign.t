@@ -2,10 +2,12 @@
 
 use strict;
 use warnings;
-use Test::More tests => 130;
+use Test::More;
 use FindBin qw($Bin);
 use lib "$Bin/lib";
 use MemcachedTest;
+
+plan skip_all => 'Slab reassign is not relevant for this prototype';
 
 # Enable manual slab reassign, cap at 6 slabs
 my $server = new_memcached('-o slab_reassign -m 4');
