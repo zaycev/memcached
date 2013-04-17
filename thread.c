@@ -114,19 +114,19 @@ unsigned short refcount_decr(unsigned short *refcount) {
 
 /* Convenience functions for calling *only* when in ITEM_LOCK_GLOBAL mode */
 void item_lock_global(int instance_id) {
-    pthread_spin_lock(&item_global_lock[0]);
+    pthread_spin_lock(&item_global_lock[instance_id]);
 }
 
 void item_unlock_global(int instance_id) {
-    pthread_spin_unlock(&item_global_lock[0]);
+    pthread_spin_unlock(&item_global_lock[instance_id]);
 }
 
 void item_lock(uint32_t hv, int instance_id) {
     uint8_t *lock_type = pthread_getspecific(item_lock_type_key);
     if (likely(*lock_type == ITEM_LOCK_GRANULAR)) {
-        pthread_spin_lock(&item_locks[0][(hv & hashmask(hashpower)) % item_lock_count]);
+        pthread_spin_lock(&item_locks[instance_id][(hv & hashmask(hashpower)) % item_lock_count]);
     } else {
-        pthread_spin_lock(&item_global_lock[0]);
+        pthread_spin_lock(&item_global_lock[instance_id]);
     }
 }
 
@@ -138,7 +138,7 @@ void item_lock(uint32_t hv, int instance_id) {
  * switch so it should stay safe.
  */
 void *item_trylock(uint32_t hv, int instance_id) {
-    pthread_spinlock_t *lock = &item_locks[0][(hv & hashmask(hashpower)) % item_lock_count];
+    pthread_spinlock_t *lock = &item_locks[instance_id][(hv & hashmask(hashpower)) % item_lock_count];
     if (pthread_spin_trylock(lock) == 0) {
         return (void *) lock;
     }
@@ -152,9 +152,9 @@ void item_trylock_unlock(void *lock, int instance_id) {
 void item_unlock(uint32_t hv, int instance_id) {
     uint8_t *lock_type = pthread_getspecific(item_lock_type_key);
     if (likely(*lock_type == ITEM_LOCK_GRANULAR)) {
-        pthread_spin_unlock(&item_locks[0][(hv & hashmask(hashpower)) % item_lock_count]);
+        pthread_spin_unlock(&item_locks[instance_id][(hv & hashmask(hashpower)) % item_lock_count]);
     } else {
-        pthread_spin_unlock(&item_global_lock[0]);
+        pthread_spin_unlock(&item_global_lock[instance_id]);
     }
 }
 
