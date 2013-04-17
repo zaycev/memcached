@@ -60,7 +60,7 @@ static uint32_t item_lock_count;
 #define hashsize(n) ((unsigned long int)1<<(n))
 #define hashmask(n) (hashsize(n)-1)
 /* this lock is temporarily engaged during a hash table expansion */
-static pthread_spinlock_t item_global_lock;
+static pthread_spinlock_t *item_global_lock;
 /* thread-specific variable for deeply finding the item lock type */
 static pthread_key_t item_lock_type_key;
 
@@ -114,11 +114,11 @@ unsigned short refcount_decr(unsigned short *refcount) {
 
 /* Convenience functions for calling *only* when in ITEM_LOCK_GLOBAL mode */
 void item_lock_global(int instance_id) {
-    pthread_spin_lock(&item_global_lock);
+    pthread_spin_lock(&item_global_lock[0]);
 }
 
 void item_unlock_global(int instance_id) {
-    pthread_spin_unlock(&item_global_lock);
+    pthread_spin_unlock(&item_global_lock[0]);
 }
 
 void item_lock(uint32_t hv, int instance_id) {
@@ -126,7 +126,7 @@ void item_lock(uint32_t hv, int instance_id) {
     if (likely(*lock_type == ITEM_LOCK_GRANULAR)) {
         pthread_spin_lock(&item_locks[(hv & hashmask(hashpower)) % item_lock_count]);
     } else {
-        pthread_spin_lock(&item_global_lock);
+        pthread_spin_lock(&item_global_lock[0]);
     }
 }
 
@@ -154,7 +154,7 @@ void item_unlock(uint32_t hv, int instance_id) {
     if (likely(*lock_type == ITEM_LOCK_GRANULAR)) {
         pthread_spin_unlock(&item_locks[(hv & hashmask(hashpower)) % item_lock_count]);
     } else {
-        pthread_spin_unlock(&item_global_lock);
+        pthread_spin_unlock(&item_global_lock[0]);
     }
 }
 
@@ -783,6 +783,7 @@ void slab_stats_aggregate(struct thread_stats *stats, struct slab_stats *out) {
 void thread_init(int nthreads, struct event_base *main_base) {
     int         i;
     int         power;
+    int         instance_num = 1;
 
     pthread_mutex_init(&cache_lock, NULL);
     pthread_mutex_init(&stats_lock, NULL);
@@ -819,9 +820,11 @@ void thread_init(int nthreads, struct event_base *main_base) {
 
     pthread_key_create(&item_lock_type_key, NULL);
 
-
-    pthread_spin_init(&item_global_lock, PTHREAD_PROCESS_SHARED);
-
+    item_global_lock = malloc(sizeof(item_global_lock) * instance_num);
+    for(i = 0; i < instance_num; i++) {
+        pthread_spin_init(&item_global_lock[i], PTHREAD_PROCESS_SHARED);
+    }
+    
     threads = calloc(nthreads, sizeof(LIBEVENT_THREAD));
     if (! threads) {
         perror("Can't allocate thread descriptors");
