@@ -44,7 +44,7 @@ static item*** primary_hashtable = 0;
  * Previous hash table. During expansion, we look here for keys that haven't
  * been moved over to the primary yet.
  */
-static item** old_hashtable = 0;
+static item*** old_hashtable = 0;
 
 /* Number of items in the hash table. */
 static unsigned int hash_items = 0;
@@ -85,7 +85,7 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv, const in
     if (expanding &&
         (oldbucket = (hv & hashmask(hashpower - 1))) >= expand_bucket)
     {
-        it = old_hashtable[oldbucket];
+        it = old_hashtable[instance_id][oldbucket];
     } else {
         it = primary_hashtable[instance_id][hv & hashmask(hashpower)];
     }
@@ -114,7 +114,7 @@ static item** _hashitem_before (const char *key, const size_t nkey, const uint32
     if (expanding &&
         (oldbucket = (hv & hashmask(hashpower - 1))) >= expand_bucket)
     {
-        pos = &old_hashtable[oldbucket];
+        pos = &old_hashtable[instance_id][oldbucket];
     } else {
         pos = &primary_hashtable[instance_id][hv & hashmask(hashpower)];
     }
@@ -127,7 +127,7 @@ static item** _hashitem_before (const char *key, const size_t nkey, const uint32
 
 /* grows the hashtable to the next power of 2. */
 static void assoc_expand(const int instance_id) {
-    old_hashtable = primary_hashtable[instance_id];
+    old_hashtable[instance_id] = primary_hashtable[instance_id];
 
     primary_hashtable[instance_id] = calloc(hashsize(hashpower + 1), sizeof(void *));
     if (primary_hashtable[instance_id]) {
@@ -142,7 +142,7 @@ static void assoc_expand(const int instance_id) {
         stats.hash_is_expanding = 1;
         STATS_UNLOCK();
     } else {
-        primary_hashtable[instance_id] = old_hashtable;
+        primary_hashtable[instance_id] = old_hashtable[instance_id];
         /* Bad news, but we can keep running. */
     }
 }
@@ -163,8 +163,8 @@ int assoc_insert(item *it, const uint32_t hv, const int instance_id) {
     if (expanding &&
         (oldbucket = (hv & hashmask(hashpower - 1))) >= expand_bucket)
     {
-        it->h_next = old_hashtable[oldbucket];
-        old_hashtable[oldbucket] = it;
+        it->h_next = old_hashtable[instance_id][oldbucket];
+        old_hashtable[instance_id][oldbucket] = it;
     } else {
         it->h_next = primary_hashtable[instance_id][hv & hashmask(hashpower)];
         primary_hashtable[instance_id][hv & hashmask(hashpower)] = it;
@@ -219,7 +219,7 @@ static void *assoc_maintenance_thread(void *arg) {
             item *it, *next;
             int bucket;
 
-            for (it = old_hashtable[expand_bucket]; NULL != it; it = next) {
+            for (it = old_hashtable[instance_id][expand_bucket]; NULL != it; it = next) {
                 next = it->h_next;
 
                 bucket = hash(ITEM_key(it), it->nkey, 0) & hashmask(hashpower);
@@ -232,7 +232,7 @@ static void *assoc_maintenance_thread(void *arg) {
             expand_bucket++;
             if (expand_bucket == hashsize(hashpower - 1)) {
                 expanding = false;
-                free(old_hashtable);
+                free(old_hashtable[instance_id]);
                 STATS_LOCK();
                 stats.hash_bytes -= hashsize(hashpower - 1) * sizeof(void *);
                 stats.hash_is_expanding = 0;
