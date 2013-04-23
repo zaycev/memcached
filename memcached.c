@@ -5175,10 +5175,6 @@ int main (int argc, char **argv) {
     /* start up worker threads if MT mode */
     thread_init(settings.num_threads, settings.num_instances, main_base);
 
-    if (start_assoc_maintenance_thread() == -1) {
-        exit(EXIT_FAILURE);
-    }
-
     if (settings.slab_reassign &&
         start_slab_maintenance_thread() == -1) {
         exit(EXIT_FAILURE);
@@ -5262,8 +5258,6 @@ int main (int argc, char **argv) {
     if (event_base_loop(main_base, 0) != 0) {
         retval = EXIT_FAILURE;
     }
-
-    stop_assoc_maintenance_thread();
 
     /* remove the PID file if we're a daemon */
     if (do_daemonize)
