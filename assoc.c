@@ -155,12 +155,64 @@ static void assoc_expand(const int instance_id) {
     }
 }
 
-static void assoc_start_expand(void) {
-    int instance_id=0;
-    if (started_expanding[instance_id])
-        return;
-    started_expanding[instance_id] = true;
-    pthread_cond_signal(&maintenance_cond);
+static volatile int do_run_maintenance_thread = 1;
+
+#define DEFAULT_HASH_BULK_MOVE 1
+int hash_bulk_move = DEFAULT_HASH_BULK_MOVE;
+
+static void expand_table_inline(int instance_id){
+       int ii = 0;
+
+        /* Lock the cache, and bulk move multiple buckets to the new
+         * hash table. */
+        item_lock_global();
+        mutex_lock(&cache_lock);
+
+        for (ii = 0; ii < hash_bulk_move && expanding[instance_id]; ++ii) {
+            item *it, *next;
+            int bucket;
+
+            for (it = old_hashtable[instance_id][expand_bucket]; NULL != it; it = next) {
+                next = it->h_next;
+
+                bucket = hash(ITEM_key(it), it->nkey, 0) & hashmask(hashpower);
+                it->h_next = primary_hashtable[instance_id][bucket];
+                primary_hashtable[instance_id][bucket] = it;
+            }
+
+            old_hashtable[expand_bucket] = NULL;
+
+            expand_bucket++;
+            if (expand_bucket == hashsize(hashpower - 1)) {
+                expanding[instance_id] = false;
+                free(old_hashtable[instance_id]);
+                STATS_LOCK();
+                stats.hash_bytes -= hashsize(hashpower - 1) * sizeof(void *);
+                stats.hash_is_expanding = 0;
+                STATS_UNLOCK();
+                if (settings.verbose > 1)
+                    fprintf(stderr, "Hash table expansion done\n");
+            }
+        }
+
+        mutex_unlock(&cache_lock);
+        item_unlock_global();
+
+        if (!expanding[instance_id]) {
+            /* finished expanding. tell all threads to use fine-grained locks */
+            switch_item_lock_type(ITEM_LOCK_GRANULAR);
+            slabs_rebalancer_resume();
+            /* We are done expanding.. just wait for next invocation */
+            mutex_lock(&cache_lock);
+            started_expanding[instance_id] = false;
+            /* Before doing anything, tell threads to use a global lock */
+            mutex_unlock(&cache_lock);
+            slabs_rebalancer_pause();
+            switch_item_lock_type(ITEM_LOCK_GLOBAL);
+            mutex_lock(&cache_lock);
+            assoc_expand(instance_id);
+            mutex_unlock(&cache_lock);
+        }
 }
 
 /* Note: this isn't an assoc_update.  The key must not already exist to call this */
@@ -181,7 +233,7 @@ int assoc_insert(item *it, const uint32_t hv, const int instance_id) {
 
     hash_items++;
     if (! expanding[instance_id] && hash_items > (hashsize(hashpower) * 3) / 2) {
-        assoc_start_expand();
+        expand_table_inline(instance_id);
     }
 
     MEMCACHED_ASSOC_INSERT(ITEM_key(it), it->nkey, hash_items);
@@ -208,11 +260,6 @@ void assoc_delete(const char *key, const size_t nkey, const uint32_t hv, const i
     assert(*before != 0);
 }
 
-
-static volatile int do_run_maintenance_thread = 1;
-
-#define DEFAULT_HASH_BULK_MOVE 1
-int hash_bulk_move = DEFAULT_HASH_BULK_MOVE;
 
 static void *assoc_maintenance_thread(void *arg) {
     int instance_id=0;
