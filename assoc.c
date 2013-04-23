@@ -162,7 +162,7 @@ static void expand_table_inline(int instance_id){
 
         /* Lock the cache, and bulk move multiple buckets to the new
          * hash table. */
-        item_lock_global();
+        item_lock_global(instance_id);
         mutex_lock(&cache_lock);
 
         for (ii = 0; ii < hash_bulk_move && expanding[instance_id]; ++ii) {
@@ -193,7 +193,7 @@ static void expand_table_inline(int instance_id){
         }
 
         mutex_unlock(&cache_lock);
-        item_unlock_global();
+        item_unlock_global(instance_id);
 
         if (!expanding[instance_id]) {
             /* finished expanding. tell all threads to use fine-grained locks */
