@@ -25,9 +25,6 @@
 #include <assert.h>
 #include <pthread.h>
 
-static pthread_cond_t maintenance_cond = PTHREAD_COND_INITIALIZER;
-
-
 typedef  unsigned long  int  ub4;   /* unsigned 4-byte quantities */
 typedef  unsigned       char ub1;   /* unsigned 1-byte quantities */
 
@@ -259,95 +256,3 @@ void assoc_delete(const char *key, const size_t nkey, const uint32_t hv, const i
        they can't find. */
     assert(*before != 0);
 }
-
-
-static void *assoc_maintenance_thread(void *arg) {
-    int instance_id=0;
-    while (do_run_maintenance_thread) {
-        int ii = 0;
-
-        /* Lock the cache, and bulk move multiple buckets to the new
-         * hash table. */
-        item_lock_global();
-        mutex_lock(&cache_lock);
-
-        for (ii = 0; ii < hash_bulk_move && expanding[instance_id]; ++ii) {
-            item *it, *next;
-            int bucket;
-
-            for (it = old_hashtable[instance_id][expand_bucket]; NULL != it; it = next) {
-                next = it->h_next;
-
-                bucket = hash(ITEM_key(it), it->nkey, 0) & hashmask(hashpower);
-                it->h_next = primary_hashtable[instance_id][bucket];
-                primary_hashtable[instance_id][bucket] = it;
-            }
-
-            old_hashtable[expand_bucket] = NULL;
-
-            expand_bucket++;
-            if (expand_bucket == hashsize(hashpower - 1)) {
-                expanding[instance_id] = false;
-                free(old_hashtable[instance_id]);
-                STATS_LOCK();
-                stats.hash_bytes -= hashsize(hashpower - 1) * sizeof(void *);
-                stats.hash_is_expanding = 0;
-                STATS_UNLOCK();
-                if (settings.verbose > 1)
-                    fprintf(stderr, "Hash table expansion done\n");
-            }
-        }
-
-        mutex_unlock(&cache_lock);
-        item_unlock_global();
-
-        if (!expanding[instance_id]) {
-            /* finished expanding. tell all threads to use fine-grained locks */
-            switch_item_lock_type(ITEM_LOCK_GRANULAR);
-            slabs_rebalancer_resume();
-            /* We are done expanding.. just wait for next invocation */
-            mutex_lock(&cache_lock);
-            started_expanding[instance_id] = false;
-            pthread_cond_wait(&maintenance_cond, &cache_lock);
-            /* Before doing anything, tell threads to use a global lock */
-            mutex_unlock(&cache_lock);
-            slabs_rebalancer_pause();
-            switch_item_lock_type(ITEM_LOCK_GLOBAL);
-            mutex_lock(&cache_lock);
-            assoc_expand(instance_id);
-            mutex_unlock(&cache_lock);
-        }
-    }
-    return NULL;
-}
-
-static pthread_t maintenance_tid;
-
-int start_assoc_maintenance_thread() {
-    int ret;
-    char *env = getenv("MEMCACHED_HASH_BULK_MOVE");
-    if (env != NULL) {
-        hash_bulk_move = atoi(env);
-        if (hash_bulk_move == 0) {
-            hash_bulk_move = DEFAULT_HASH_BULK_MOVE;
-        }
-    }
-    if ((ret = pthread_create(&maintenance_tid, NULL,
-                              assoc_maintenance_thread, NULL)) != 0) {
-        fprintf(stderr, "Can't create thread: %s\n", strerror(ret));
-        return -1;
-    }
-    return 0;
-}
-
-void stop_assoc_maintenance_thread() {
-    mutex_lock(&cache_lock);
-    do_run_maintenance_thread = 0;
-    pthread_cond_signal(&maintenance_cond);
-    mutex_unlock(&cache_lock);
-
-    /* Wait for the maintenance thread to stop */
-    pthread_join(maintenance_tid, NULL);
-}
-
-
