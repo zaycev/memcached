@@ -61,8 +61,10 @@ static uint32_t item_lock_count;
 #define hashmask(n) (hashsize(n)-1)
 /* this lock is temporarily engaged during a hash table expansion */
 static pthread_spinlock_t *item_global_lock;
+static pthread_spinlock_t *instance_lock;
 /* thread-specific variable for deeply finding the item lock type */
 static pthread_key_t item_lock_type_key;
+
 
 static LIBEVENT_DISPATCHER_THREAD dispatcher_thread;
 
@@ -120,6 +122,15 @@ void item_lock_global(int instance_id) {
 void item_unlock_global(int instance_id) {
     pthread_spin_unlock(&item_global_lock[instance_id]);
 }
+
+void instance_lock(int instance_id) {
+    pthread_spin_lock(&instance_lock[instance_id]);
+}
+
+void instance_lock(int instance_id) {
+    pthread_spin_lock(&instance_lock[instance_id]);
+}
+
 
 void item_lock(uint32_t hv, int instance_id) {
     uint8_t *lock_type = pthread_getspecific(item_lock_type_key);
