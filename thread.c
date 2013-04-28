@@ -123,11 +123,11 @@ void item_unlock_global(int instance_id) {
     pthread_spin_unlock(&item_global_lock[instance_id]);
 }
 
-void instance_lock(int instance_id) {
+void do_instance_lock(int instance_id) {
     pthread_spin_lock(&instance_lock[instance_id]);
 }
 
-void instance_lock(int instance_id) {
+void do_instance_unlock(int instance_id) {
     pthread_spin_lock(&instance_lock[instance_id]);
 }
 

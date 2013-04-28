@@ -547,6 +547,11 @@ void *item_trylock(uint32_t hv, int instance_id);
 void item_trylock_unlock(void *arg, int instance_id);
 void item_unlock(uint32_t hv, int instance_id);
 void switch_item_lock_type(enum item_lock_types type);
+
+void do_instance_lock(int instance_id);
+void do_instance_unlock(int instance_id);
+
+
 unsigned short refcount_incr(unsigned short *refcount);
 unsigned short refcount_decr(unsigned short *refcount);
 void STATS_LOCK(void);
