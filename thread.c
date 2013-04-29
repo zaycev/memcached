@@ -155,7 +155,7 @@ void *item_trylock(uint32_t hv, int instance_id) {
 //    if (pthread_spin_trylock(lock) == 0) {
 //        return (void *) lock;
 //    }
-//    return NULL;
+    return NULL;
 }
 
 void item_trylock_unlock(void *lock, int instance_id) {
