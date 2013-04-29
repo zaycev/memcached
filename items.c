@@ -105,6 +105,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
     if (id == 0)
         return 0;
 
+    do_instance_lock(instance_id);
     mutex_lock(&cache_lock);
     /* do a quick check if we have any expired items in the tail.. */
     int tries = 5;
@@ -206,6 +207,8 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
      */
     it->refcount = 1;     /* the caller will have a reference */
     mutex_unlock(&cache_lock);
+    do_instance_unlock(instance_id);
+
     it->next = it->prev = it->h_next = 0;
     it->slabs_clsid = id;
 

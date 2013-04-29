@@ -193,7 +193,6 @@ static void expand_table_inline(int instance_id){
         }
 
         mutex_unlock(&cache_lock);
-        item_unlock_global(instance_id);
 
         if (!expanding[instance_id]) {
             /* finished expanding. tell all threads to use fine-grained locks */
@@ -210,6 +209,7 @@ static void expand_table_inline(int instance_id){
             assoc_expand(instance_id);
             mutex_unlock(&cache_lock);
         }
+        item_unlock_global(instance_id);
 }
 
 /* Note: this isn't an assoc_update.  The key must not already exist to call this */

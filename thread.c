@@ -133,12 +133,13 @@ void do_instance_unlock(int instance_id) {
 
 
 void item_lock(uint32_t hv, int instance_id) {
-    uint8_t *lock_type = pthread_getspecific(item_lock_type_key);
-    if (likely(*lock_type == ITEM_LOCK_GRANULAR)) {
-        pthread_spin_lock(&item_locks[instance_id][(hv & hashmask(hashpower)) % item_lock_count]);
-    } else {
-        pthread_spin_lock(&item_global_lock[instance_id]);
-    }
+    do_instance_lock(instance_id);
+//    uint8_t *lock_type = pthread_getspecific(item_lock_type_key);
+//    if (likely(*lock_type == ITEM_LOCK_GRANULAR)) {
+//        pthread_spin_lock(&item_locks[instance_id][(hv & hashmask(hashpower)) % item_lock_count]);
+//    } else {
+//        pthread_spin_lock(&item_global_lock[instance_id]);
+//    }
 }
 
 /* Special case. When ITEM_LOCK_GLOBAL mode is enabled, this should become a
@@ -149,11 +150,12 @@ void item_lock(uint32_t hv, int instance_id) {
  * switch so it should stay safe.
  */
 void *item_trylock(uint32_t hv, int instance_id) {
-    pthread_spinlock_t *lock = &item_locks[instance_id][(hv & hashmask(hashpower)) % item_lock_count];
-    if (pthread_spin_trylock(lock) == 0) {
-        return (void *) lock;
-    }
-    return NULL;
+    do_instance_unlock(instance_id);
+//    pthread_spinlock_t *lock = &item_locks[instance_id][(hv & hashmask(hashpower)) % item_lock_count];
+//    if (pthread_spin_trylock(lock) == 0) {
+//        return (void *) lock;
+//    }
+//    return NULL;
 }
 
 void item_trylock_unlock(void *lock, int instance_id) {
