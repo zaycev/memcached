@@ -43,13 +43,11 @@ static unsigned int **sizes;
 
 void item_stats_reset(const int num_instances) {
     int i=0;
-    mutex_lock(&cache_lock);
     //Temporary way to reset stats, should change to memset on individual itemstats
     for(i=0;i<num_instances;i++){
         free(itemstats[i]);
         itemstats[i] = calloc(LARGEST_ID,sizeof(itemstats_t));
     }
-    mutex_unlock(&cache_lock);
 }
 
 
@@ -105,7 +103,6 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
     if (id == 0)
         return 0;
 
-    mutex_lock(&cache_lock);
     /* do a quick check if we have any expired items in the tail.. */
     int tries = 5;
     int tried_alloc = 0;
@@ -122,7 +119,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
          * other callers can incr the refcount
          */
         /* FIXME: I think we need to mask the hv here for comparison? */
-        if (hv != cur_hv && (hold_lock = item_trylock(hv, instance_id)) == NULL)
+        if (hv != cur_hv && (hold_lock = do_instance_trylock(instance_id)) == NULL)
             continue;
         /* Now see if the item is refcount locked */
         if (refcount_incr(&search->refcount) != 2) {
@@ -136,7 +133,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
                 do_item_unlink_nolock(search, hv, instance_id);
             }
             if (hold_lock)
-                item_trylock_unlock(hold_lock, instance_id);
+                do_instance_trylock_unlock(hold_lock, instance_id);
             continue;
         }
 
@@ -185,7 +182,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
         refcount_decr(&search->refcount);
         /* If hash values were equal, we don't grab a second lock */
         if (hold_lock)
-            item_trylock_unlock(hold_lock, instance_id);
+            do_instance_trylock_unlock(hold_lock, instance_id);
         break;
     }
 
@@ -194,7 +191,6 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
 
     if (it == NULL) {
         itemstats[instance_id][id].outofmemory++;
-        mutex_unlock(&cache_lock);
         return NULL;
     }
 
@@ -205,7 +201,6 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags,
      * been removed from the slab LRU.
      */
     it->refcount = 1;     /* the caller will have a reference */
-    mutex_unlock(&cache_lock);
     it->next = it->prev = it->h_next = 0;
     it->slabs_clsid = id;
 
@@ -297,7 +292,6 @@ static void item_unlink_q(item *it, const int instance_id) {
 int do_item_link(item *it, const uint32_t hv, const int instance_id) {
     MEMCACHED_ITEM_LINK(ITEM_key(it), it->nkey, it->nbytes);
     assert((it->it_flags & (ITEM_LINKED|ITEM_SLABBED)) == 0);
-    mutex_lock(&cache_lock);
     it->it_flags |= ITEM_LINKED;
     it->time = current_time;
 
@@ -312,14 +306,12 @@ int do_item_link(item *it, const uint32_t hv, const int instance_id) {
     assoc_insert(it, hv, instance_id);
     item_link_q(it, instance_id);
     refcount_incr(&it->refcount);
-    mutex_unlock(&cache_lock);
 
     return 1;
 }
 
 void do_item_unlink(item *it, const uint32_t hv, const int instance_id) {
     MEMCACHED_ITEM_UNLINK(ITEM_key(it), it->nkey, it->nbytes);
-    mutex_lock(&cache_lock);
     if ((it->it_flags & ITEM_LINKED) != 0) {
         it->it_flags &= ~ITEM_LINKED;
         STATS_LOCK();
@@ -330,7 +322,6 @@ void do_item_unlink(item *it, const uint32_t hv, const int instance_id) {
         item_unlink_q(it, instance_id);
         do_item_remove(it);
     }
-    mutex_unlock(&cache_lock);
 }
 
 /* FIXME: Is it necessary to keep this copy/pasted code? */
@@ -363,13 +354,11 @@ void do_item_update(item *it) {
     if (it->time < current_time - ITEM_UPDATE_INTERVAL) {
         assert((it->it_flags & ITEM_SLABBED) == 0);
 
-        mutex_lock(&cache_lock);
         if ((it->it_flags & ITEM_LINKED) != 0) {
             item_unlink_q(it, instance_id);
             it->time = current_time;
             item_link_q(it, instance_id);
         }
-        mutex_unlock(&cache_lock);
     }
 }
 
@@ -427,13 +416,11 @@ char *do_item_cachedump(const unsigned int slabs_clsid, const unsigned int limit
 
 void item_stats_evictions(uint64_t *evicted) {
     int i,instance_id;
-    mutex_lock(&cache_lock);
     for (instance_id = 0; instance_id < settings.num_instances; instance_id++) {
         for (i = 0; i < LARGEST_ID; i++) {
             evicted[i] = itemstats[instance_id][i].evicted;
         }
     }
-    mutex_unlock(&cache_lock);
 }
 
 void do_item_stats_totals(ADD_STAT add_stats, void *c) {
@@ -535,7 +522,6 @@ void do_item_stats_sizes(ADD_STAT add_stats, void *c) {
 
 /** wrapper around assoc_find which does the lazy expiration logic */
 item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, const int instance_id) {
-    //mutex_lock(&cache_lock);
     item *it = assoc_find(key, nkey, hv, instance_id);
     if (it != NULL) {
         refcount_incr(&it->refcount);
@@ -549,7 +535,6 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, const i
             it = NULL;
         }
     }
-    //mutex_unlock(&cache_lock);
     int was_found = 0;
 
     if (settings.verbose > 2) {
