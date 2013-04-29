@@ -158,10 +158,12 @@ static volatile int do_run_maintenance_thread = 1;
 int hash_bulk_move = DEFAULT_HASH_BULK_MOVE;
 
 static void expand_table_inline(int instance_id){
-
-
        int ii = 0;
-       do_instance_lock(instance_id);
+
+        /* Lock the cache, and bulk move multiple buckets to the new
+         * hash table. */
+        item_lock_global(instance_id);
+        mutex_lock(&cache_lock);
 
         for (ii = 0; ii < hash_bulk_move && expanding[instance_id]; ++ii) {
             item *it, *next;
@@ -189,15 +191,25 @@ static void expand_table_inline(int instance_id){
                     fprintf(stderr, "Hash table expansion done\n");
             }
         }
-      	do_instance_unlock(instance_id);
+
+        mutex_unlock(&cache_lock);
+        item_unlock_global(instance_id);
 
         if (!expanding[instance_id]) {
+            /* finished expanding. tell all threads to use fine-grained locks */
+            switch_item_lock_type(ITEM_LOCK_GRANULAR);
             slabs_rebalancer_resume();
+            /* We are done expanding.. just wait for next invocation */
+            mutex_lock(&cache_lock);
             started_expanding[instance_id] = false;
+            /* Before doing anything, tell threads to use a global lock */
+            mutex_unlock(&cache_lock);
             slabs_rebalancer_pause();
+            switch_item_lock_type(ITEM_LOCK_GLOBAL);
+            mutex_lock(&cache_lock);
             assoc_expand(instance_id);
+            mutex_unlock(&cache_lock);
         }
-
 }
 
 /* Note: this isn't an assoc_update.  The key must not already exist to call this */

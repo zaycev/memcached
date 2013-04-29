@@ -3121,7 +3121,9 @@ enum delta_result_type do_add_delta(conn *c, const char *key, const size_t nkey,
     } else { /* replace in-place */
         /* When changing the value without replacing the item, we
            need to update the CAS on the existing item. */
+        mutex_lock(&cache_lock); /* FIXME */
         ITEM_set_cas(it, (settings.use_cas) ? get_cas_id() : 0);
+        mutex_unlock(&cache_lock);
 
         memcpy(ITEM_data(it), buf, res);
         memset(ITEM_data(it) + res, ' ', it->nbytes - res - 2);

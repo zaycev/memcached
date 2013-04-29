@@ -37,6 +37,9 @@ struct conn_queue {
     pthread_cond_t  cond;
 };
 
+/* Lock for cache operations (item_*, assoc_*) */
+pthread_mutex_t cache_lock;
+
 /* Connection lock around accepting new connections */
 pthread_mutex_t conn_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -51,9 +54,15 @@ static pthread_mutex_t stats_lock;
 static CQ_ITEM *cqi_freelist;
 static pthread_mutex_t cqi_freelist_lock;
 
+static pthread_spinlock_t **item_locks;
+/* size of the item lock hash table */
+static uint32_t item_lock_count;
 #define hashsize(n) ((unsigned long int)1<<(n))
 #define hashmask(n) (hashsize(n)-1)
+/* this lock is temporarily engaged during a hash table expansion */
+static pthread_spinlock_t *item_global_lock;
 static pthread_spinlock_t *instance_lock;
+/* thread-specific variable for deeply finding the item lock type */
 static pthread_key_t item_lock_type_key;
 
 
@@ -106,7 +115,6 @@ unsigned short refcount_decr(unsigned short *refcount) {
 }
 
 /* Convenience functions for calling *only* when in ITEM_LOCK_GLOBAL mode */
-/*
 void item_lock_global(int instance_id) {
     pthread_spin_lock(&item_global_lock[instance_id]);
 }
@@ -114,7 +122,6 @@ void item_lock_global(int instance_id) {
 void item_unlock_global(int instance_id) {
     pthread_spin_unlock(&item_global_lock[instance_id]);
 }
-*/
 
 void do_instance_lock(int instance_id) {
     pthread_spin_lock(&instance_lock[instance_id]);
@@ -124,18 +131,43 @@ void do_instance_unlock(int instance_id) {
     pthread_spin_lock(&instance_lock[instance_id]);
 }
 
-void *do_instance_trylock(int instance_id) {
-    pthread_spinlock_t *lock = &instance_lock[instance_id];
+
+void item_lock(uint32_t hv, int instance_id) {
+    uint8_t *lock_type = pthread_getspecific(item_lock_type_key);
+    if (likely(*lock_type == ITEM_LOCK_GRANULAR)) {
+        pthread_spin_lock(&item_locks[instance_id][(hv & hashmask(hashpower)) % item_lock_count]);
+    } else {
+        pthread_spin_lock(&item_global_lock[instance_id]);
+    }
+}
+
+/* Special case. When ITEM_LOCK_GLOBAL mode is enabled, this should become a
+ * no-op, as it's only called from within the item lock if necessary.
+ * However, we can't mix a no-op and threads which are still synchronizing to
+ * GLOBAL. So instead we just always try to lock. When in GLOBAL mode this
+ * turns into an effective no-op. Threads re-synchronize after the power level
+ * switch so it should stay safe.
+ */
+void *item_trylock(uint32_t hv, int instance_id) {
+    pthread_spinlock_t *lock = &item_locks[instance_id][(hv & hashmask(hashpower)) % item_lock_count];
     if (pthread_spin_trylock(lock) == 0) {
         return (void *) lock;
     }
     return NULL;
 }
 
-void do_instance_trylock_unlock(void *lock, int instance_id) {
+void item_trylock_unlock(void *lock, int instance_id) {
     pthread_spin_unlock((pthread_spinlock_t *) lock);
 }
 
+void item_unlock(uint32_t hv, int instance_id) {
+    uint8_t *lock_type = pthread_getspecific(item_lock_type_key);
+    if (likely(*lock_type == ITEM_LOCK_GRANULAR)) {
+        pthread_spin_unlock(&item_locks[instance_id][(hv & hashmask(hashpower)) % item_lock_count]);
+    } else {
+        pthread_spin_unlock(&item_global_lock[instance_id]);
+    }
+}
 
 static void wait_for_thread_registration(int nthreads) {
     while (init_count < nthreads) {
@@ -475,9 +507,9 @@ item *item_get(const char *key, const size_t nkey) {
     uint32_t hv;
     hv = hash(key, nkey, 0);
     int instance_id=get_instance_id(key, nkey, 0, settings.num_instances);
-    do_instance_lock(instance_id);
+    item_lock(hv, instance_id);
     it = do_item_get(key, nkey, hv, instance_id);
-    do_instance_unlock(instance_id);
+    item_unlock(hv, instance_id);
     return it;
 }
 
@@ -487,9 +519,9 @@ item *item_touch(const char *key, size_t nkey, uint32_t exptime) {
     hv = hash(key, nkey, 0);
     int instance_id=get_instance_id(key, nkey, 0, settings.num_instances);
 
-    do_instance_lock(instance_id);
+    item_lock(hv, instance_id);
     it = do_item_touch(key, nkey, exptime, hv, instance_id);
-    do_instance_unlock(instance_id);
+    item_unlock(hv, instance_id);
     return it;
 }
 
@@ -502,9 +534,9 @@ int item_link(item *item) {
     hv = hash(ITEM_key(item), item->nkey, 0);
     instance_id = get_instance_id(ITEM_key(item), item->nkey, 0, settings.num_instances);
 
-    do_instance_lock(instance_id);
+    item_lock(hv, instance_id);
     ret = do_item_link(item, hv, instance_id);
-    do_instance_unlock(instance_id);
+    item_unlock(hv, instance_id);
     return ret;
 }
 
@@ -517,9 +549,9 @@ void item_remove(item *item) {
     hv = hash(ITEM_key(item), item->nkey, 0);
     int instance_id = get_instance_id(ITEM_key(item), item->nkey, 0, settings.num_instances);
 
-    do_instance_lock(instance_id);
+    item_lock(hv, instance_id);
     do_item_remove(item);
-    do_instance_unlock(instance_id);
+    item_unlock(hv, instance_id);
 }
 
 /*
@@ -539,9 +571,9 @@ void item_unlink(item *item) {
     hv = hash(ITEM_key(item), item->nkey, 0);
     int instance_id = get_instance_id(ITEM_key(item), item->nkey, 0, settings.num_instances);
 
-    do_instance_lock(instance_id);
+    item_lock(hv, instance_id);
     do_item_unlink(item, hv, instance_id);
-    do_instance_unlock(instance_id);
+    item_unlock(hv, instance_id);
 }
 
 /*
@@ -552,9 +584,9 @@ void item_update(item *item) {
     hv = hash(ITEM_key(item), item->nkey, 0);
     int instance_id = get_instance_id(ITEM_key(item), item->nkey, 0, settings.num_instances);
 
-    do_instance_lock(instance_id);
+    item_lock(hv, instance_id);
     do_item_update(item);
-    do_instance_unlock(instance_id);
+    item_unlock(hv, instance_id);
 }
 
 /*
@@ -570,9 +602,9 @@ enum delta_result_type add_delta(conn *c, const char *key,
     hv = hash(key, nkey, 0);
     int instance_id=get_instance_id(key, nkey, 0, settings.num_instances);
 
-    do_instance_lock(instance_id);
+    item_lock(hv, instance_id);
     ret = do_add_delta(c, key, nkey, incr, delta, buf, cas, hv, instance_id);
-    do_instance_unlock(instance_id);
+    item_unlock(hv, instance_id);
     return ret;
 }
 
@@ -585,9 +617,9 @@ enum store_item_type store_item(item *item, int comm, conn* c) {
 
     hv = hash(ITEM_key(item), item->nkey, 0);
     int instance_id=get_instance_id(ITEM_key(item), item->nkey, 0, settings.num_instances);
-    do_instance_lock(instance_id);
+    item_lock(hv, instance_id);
     ret = do_store_item(item, comm, c, hv, instance_id);
-    do_instance_unlock(instance_id);
+    item_unlock(hv, instance_id);
     return ret;
 }
 
@@ -595,7 +627,9 @@ enum store_item_type store_item(item *item, int comm, conn* c) {
  * Flushes expired items after a flush_all call
  */
 void item_flush_expired() {
+    mutex_lock(&cache_lock);
     do_item_flush_expired();
+    mutex_unlock(&cache_lock);
 }
 
 /*
@@ -604,26 +638,34 @@ void item_flush_expired() {
 char *item_cachedump(unsigned int slabs_clsid, unsigned int limit, unsigned int *bytes) {
     char *ret;
 
+    mutex_lock(&cache_lock);
     ret = do_item_cachedump(slabs_clsid, limit, bytes);
+    mutex_unlock(&cache_lock);
     return ret;
 }
 
 /*
  * Dumps statistics about slab classes
  */
-void item_stats(ADD_STAT add_stats, void *c) {
+void  item_stats(ADD_STAT add_stats, void *c) {
+    mutex_lock(&cache_lock);
     do_item_stats(add_stats, c);
+    mutex_unlock(&cache_lock);
 }
 
-void item_stats_totals(ADD_STAT add_stats, void *c) {
+void  item_stats_totals(ADD_STAT add_stats, void *c) {
+    mutex_lock(&cache_lock);
     do_item_stats_totals(add_stats, c);
+    mutex_unlock(&cache_lock);
 }
 
 /*
  * Dumps a list of objects of each size in 32-byte increments
  */
-void item_stats_sizes(ADD_STAT add_stats, void *c) {
+void  item_stats_sizes(ADD_STAT add_stats, void *c) {
+    mutex_lock(&cache_lock);
     do_item_stats_sizes(add_stats, c);
+    mutex_unlock(&cache_lock);
 }
 
 /******************************* GLOBAL STATS ******************************/
@@ -750,12 +792,11 @@ void slab_stats_aggregate(struct thread_stats *stats, struct slab_stats *out) {
  * main_base Event base for main thread
  */
 void thread_init(int nthreads, int instance_num, struct event_base *main_base) {
-    /*
     int         i, j;
-    */
-    int         i;
     int         power;
 
+    pthread_mutex_init(&cache_lock, NULL);
+    pthread_mutex_init(&stats_lock, NULL);
 
     pthread_mutex_init(&init_lock, NULL);
     pthread_cond_init(&init_cond, NULL);
@@ -774,9 +815,9 @@ void thread_init(int nthreads, int instance_num, struct event_base *main_base) {
         /* 8192 buckets, and central locks don't scale much past 5 threads */
         power = 13;
     }
-    
-    /* TODO: REMOVE OLD ITEM LOCKS INITIALIZATION
+
     item_lock_count = hashsize(power);
+
     item_locks = calloc(instance_num, sizeof(pthread_spinlock_t *));
     for (i = 0; i < instance_num; i++){
         item_locks[i] = calloc(item_lock_count, sizeof(pthread_spinlock_t));
@@ -788,17 +829,13 @@ void thread_init(int nthreads, int instance_num, struct event_base *main_base) {
             pthread_spin_init(&item_locks[i][j], PTHREAD_PROCESS_SHARED);
         }
     }
+
     pthread_key_create(&item_lock_type_key, NULL);
+
     item_global_lock = calloc(instance_num, sizeof(item_global_lock));
     for(i = 0; i < instance_num; i++) {
         pthread_spin_init(&item_global_lock[i], PTHREAD_PROCESS_SHARED);
     }
-    */
-    instance_lock = calloc(instance_num, sizeof(instance_lock));
-    for(i = 0; i < instance_num; i++) {
-        pthread_spin_init(&instance_lock[i], PTHREAD_PROCESS_SHARED);
-    }
-
 
     threads = calloc(nthreads, sizeof(LIBEVENT_THREAD));
     if (! threads) {
