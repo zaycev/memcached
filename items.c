@@ -403,6 +403,7 @@ char *do_item_cachedump(const unsigned int slabs_clsid, const unsigned int limit
     bufcurr = 0;
 
     for(i=0; i < settings.num_instances; i++){
+        do_instance_lock(i);
         it = heads[i][slabs_clsid];
         while (it != NULL && (limit == 0 || shown < limit)) {
             assert(it->nkey <= KEY_MAX_LENGTH);
@@ -419,6 +420,7 @@ char *do_item_cachedump(const unsigned int slabs_clsid, const unsigned int limit
             shown++;
             it = it->next;
         }
+        do_instance_unlock(i);
     }
 
     memcpy(buffer + bufcurr, "END\r\n", 6);
